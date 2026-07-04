@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>كاشي — لوحة المدير</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   CSS VARIABLES & RESET
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-card: rgba(30,41,59,.65);
+  --border-card: rgba(148,163,184,.12);
+  --accent: #2E7D32;
+  --accent-light: #4CAF50;
+  --accent-glow: rgba(46,125,50,.25);
+  --accent-soft: rgba(46,125,50,.12);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --danger: #ef4444;
+  --danger-soft: rgba(239,68,68,.12);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245,158,11,.12);
+  --info: #3b82f6;
+  --info-soft: rgba(59,130,246,.12);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 8px 32px rgba(0,0,0,.35);
+  --transition: .3s cubic-bezier(.4,0,.2,1);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { direction: rtl; scroll-behavior: smooth; }
+body {
+  font-family: 'Cairo', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+
+/* ══════════════════════════════════════════════════════════════
+   BACKGROUND PATTERN
+   ══════════════════════════════════════════════════════════════ */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(46,125,50,.08), transparent),
+    radial-gradient(ellipse 60% 50% at 80% 90%, rgba(59,130,246,.05), transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   ══════════════════════════════════════════════════════════════ */
+#login-screen {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-primary);
+}
+#login-screen.hidden { display: none; }
+.login-box {
+  background: var(--bg-card);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  padding: 48px 40px;
+  width: 380px; max-width: 92vw;
+  text-align: center;
+  box-shadow: var(--shadow);
+  animation: fadeUp .5s ease;
+}
+.login-logo {
+  font-size: 42px; font-weight: 900;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 6px;
+}
+.login-subtitle { color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
+.pin-dots {
+  display: flex; justify-content: center; gap: 14px; margin-bottom: 28px; direction: ltr;
+}
+.pin-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  transition: var(--transition);
+}
+.pin-dot.filled {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.pin-dot.error { border-color: var(--danger); background: var(--danger); }
+.pin-pad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; max-width: 260px; margin: 0 auto;
+}
+.pin-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-card);
+  color: var(--text-primary);
+  font-family: 'Cairo'; font-size: 22px; font-weight: 700;
+  width: 72px; height: 62px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-btn:active { transform: scale(.93); background: var(--accent); }
+.pin-btn.action { font-size: 14px; background: transparent; border-color: transparent; }
+.pin-btn.action.enter { background: var(--accent); color: #fff; }
+.login-error {
+  color: var(--danger); font-size: 13px; margin-top: 16px;
+  min-height: 20px; transition: var(--transition);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DASHBOARD LAYOUT
+   ══════════════════════════════════════════════════════════════ */
+#dashboard { display: none; position: relative; z-index: 1; }
+#dashboard.visible { display: block; animation: fadeUp .6s ease; }
+
+/* Header */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(15,23,42,.82);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-card);
+  padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header-right { display: flex; align-items: center; gap: 14px; }
+.header-logo {
+  font-size: 26px; font-weight: 900;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.header-badge {
+  font-size: 11px; color: var(--accent-light);
+  background: var(--accent-soft);
+  padding: 3px 10px; border-radius: 20px;
+  font-weight: 600;
+}
+.header-left { display: flex; align-items: center; gap: 18px; }
+.header-time { color: var(--text-secondary); font-size: 13px; direction: ltr; }
+.refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.refresh-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent-light);
+  animation: pulse 2s infinite;
+}
+.refresh-dot.offline { background: var(--danger); animation: none; }
+.btn-logout {
+  background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.2);
+  color: var(--danger); font-family: 'Cairo'; font-size: 13px; font-weight: 600;
+  padding: 7px 18px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: var(--transition);
+}
+.btn-logout:hover { background: rgba(239,68,68,.22); }
+
+/* Main grid */
+.main { padding: 20px; max-width: 1440px; margin: 0 auto; }
+.grid {
+  display: grid; gap: 20px;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .grid { grid-template-columns: 1fr; } }
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+  animation: fadeUp .5s ease both;
+}
+.card:hover { border-color: rgba(148,163,184,.2); transform: translateY(-2px); }
+.card-span-2 { grid-column: span 2; }
+.card-span-4 { grid-column: span 4; }
+@media (max-width: 600px) {
+  .card-span-2, .card-span-4 { grid-column: span 1; }
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.card-title {
+  font-size: 15px; font-weight: 700; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title .icon { font-size: 18px; }
+
+/* KPI Cards */
+.kpi { text-align: center; padding: 28px 18px; position: relative; overflow: hidden; }
+.kpi::before {
+  content: ''; position: absolute; top: 0; right: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.kpi-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; margin: 0 auto 14px;
+}
+.kpi-icon.sales   { background: var(--accent-soft); }
+.kpi-icon.count   { background: var(--info-soft); }
+.kpi-icon.average { background: var(--warning-soft); }
+.kpi-icon.profit  { background: rgba(16,185,129,.12); }
+.kpi-value {
+  font-size: 30px; font-weight: 800; line-height: 1.2;
+  direction: ltr; display: inline-block;
+}
+.kpi-value .currency { font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-right: 4px; }
+.kpi-label { font-size: 13px; color: var(--text-secondary); margin-top: 6px; font-weight: 600; }
+
+/* Shift Card */
+.shift-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+}
+.shift-item { display: flex; flex-direction: column; gap: 4px; }
+.shift-item .label { font-size: 12px; color: var(--text-muted); }
+.shift-item .value { font-size: 15px; font-weight: 700; }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700;
+}
+.status-badge.open { background: var(--accent-soft); color: var(--accent-light); }
+.status-badge.closed { background: var(--danger-soft); color: var(--danger); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-badge.open .status-dot { background: var(--accent-light); animation: pulse 2s infinite; }
+.status-badge.closed .status-dot { background: var(--danger); }
+
+/* Table */
+.table-wrap { overflow-x: auto; margin: 0 -22px; padding: 0 22px; }
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 13px;
+}
+th {
+  text-align: right; padding: 12px 14px;
+  color: var(--text-muted); font-weight: 600; font-size: 12px;
+  border-bottom: 1px solid var(--border-card);
+  position: sticky; top: 0; background: var(--bg-secondary);
+  white-space: nowrap;
+}
+td {
+  padding: 11px 14px; border-bottom: 1px solid rgba(148,163,184,.06);
+  white-space: nowrap;
+}
+tr { transition: var(--transition); }
+tbody tr:hover { background: rgba(148,163,184,.04); }
+.badge-payment {
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.badge-cash   { background: var(--accent-soft); color: var(--accent-light); }
+.badge-card   { background: var(--info-soft); color: var(--info); }
+.badge-online { background: rgba(168,85,247,.12); color: #a855f7; }
+.badge-type {
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.badge-dine_in  { background: var(--info-soft); color: var(--info); }
+.badge-takeaway { background: var(--warning-soft); color: var(--warning); }
+.badge-delivery { background: rgba(168,85,247,.12); color: #a855f7; }
+
+/* Low Stock */
+.stock-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
+.stock-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  background: rgba(239,68,68,.04);
+  border: 1px solid rgba(239,68,68,.1);
+  transition: var(--transition);
+}
+.stock-item:hover { background: rgba(239,68,68,.08); }
+.stock-name { font-weight: 600; font-size: 14px; }
+.stock-qty {
+  font-size: 13px; font-weight: 700; color: var(--danger);
+  background: var(--danger-soft); padding: 3px 12px;
+  border-radius: 20px; min-width: 40px; text-align: center;
+}
+.stock-qty.warning { color: var(--warning); background: var(--warning-soft); }
+
+/* Staff Performance */
+.staff-list { display: flex; flex-direction: column; gap: 12px; }
+.staff-row { display: flex; align-items: center; gap: 14px; }
+.staff-avatar {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 800; color: var(--accent-light);
+}
+.staff-info { flex: 1; min-width: 0; }
+.staff-name { font-size: 14px; font-weight: 700; }
+.staff-bar-track {
+  height: 8px; background: rgba(148,163,184,.1); border-radius: 4px;
+  margin-top: 6px; overflow: hidden;
+}
+.staff-bar-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  transition: width .6s ease;
+}
+.staff-sales { font-size: 13px; font-weight: 700; color: var(--text-secondary); direction: ltr; white-space: nowrap; }
+
+/* Chart canvas */
+.chart-container { position: relative; height: 280px; }
+@media (max-width: 600px) { .chart-container { height: 220px; } }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px;
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 10px; display: block; }
+
+/* ══════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════ */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .4; transform: scale(.85); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, rgba(148,163,184,.1) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+  min-height: 24px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Stagger card animations */
+.card:nth-child(1)  { animation-delay: .05s; }
+.card:nth-child(2)  { animation-delay: .10s; }
+.card:nth-child(3)  { animation-delay: .15s; }
+.card:nth-child(4)  { animation-delay: .20s; }
+.card:nth-child(5)  { animation-delay: .25s; }
+.card:nth-child(6)  { animation-delay: .30s; }
+.card:nth-child(7)  { animation-delay: .35s; }
+.card:nth-child(8)  { animation-delay: .40s; }
+.card:nth-child(9)  { animation-delay: .45s; }
+.card:nth-child(10) { animation-delay: .50s; }
+
+/* Offline banner */
+.offline-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  background: var(--danger); color: #fff; text-align: center;
+  padding: 8px; font-size: 13px; font-weight: 700;
+  transform: translateY(-100%); transition: transform .3s ease;
+}
+.offline-banner.show { transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Offline Banner -->
+<div class="offline-banner" id="offlineBanner">⚠️ فقدان الاتصال بالخادم — جارٍ إعادة المحاولة...</div>
+
+<!-- ═══════════════════ LOGIN SCREEN ═══════════════════ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">كاشي</div>
+    <div class="login-subtitle">لوحة تحكم المدير</div>
+    <div class="pin-dots" id="pinDots">
+      <div class="pin-dot"></div><div class="pin-dot"></div>
+      <div class="pin-dot"></div><div class="pin-dot"></div>
+    </div>
+    <div class="pin-pad" id="pinPad">
+      <button class="pin-btn" data-val="1">١</button>
+      <button class="pin-btn" data-val="2">٢</button>
+      <button class="pin-btn" data-val="3">٣</button>
+      <button class="pin-btn" data-val="4">٤</button>
+      <button class="pin-btn" data-val="5">٥</button>
+      <button class="pin-btn" data-val="6">٦</button>
+      <button class="pin-btn" data-val="7">٧</button>
+      <button class="pin-btn" data-val="8">٨</button>
+      <button class="pin-btn" data-val="9">٩</button>
+      <button class="pin-btn action" data-val="clear">⌫</button>
+      <button class="pin-btn" data-val="0">٠</button>
+      <button class="pin-btn action enter" data-val="enter">دخول</button>
+    </div>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ DASHBOARD ═══════════════════ -->
+<div id="dashboard">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-right">
+      <span class="header-logo">كاشي</span>
+      <span class="header-badge">لوحة المدير</span>
+    </div>
+    <div class="header-left">
+      <div class="refresh-indicator">
+        <span class="refresh-dot" id="refreshDot"></span>
+        <span id="refreshLabel">تحديث تلقائي</span>
+      </div>
+      <span class="header-time" id="headerTime"></span>
+      <button class="btn-logout" id="btnLogout">تسجيل خروج ✕</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="grid">
+
+      <!-- KPI 1: Total Sales -->
+      <div class="card kpi" style="--kpi-color: var(--accent)">
+        <div class="kpi-icon sales">💰</div>
+        <div class="kpi-value" id="kpiSales"><span class="skeleton" style="width:100px;display:inline-block">&nbsp;</span></div>
+        <div class="kpi-label">إجمالي مبيعات اليوم</div>
+      </div>
+
+      <!-- KPI 2: Invoice Count -->
+      <div class="card kpi">
+        <div class="kpi-icon count">🧾</div>
+        <div class="kpi-value" id="kpiCount"><span class="skeleton" style="width:60px;display:inline-block">&nbsp;</span></div>
+        <div class="kpi-label">عدد الفواتير</div>
+      </div>
+
+      <!-- KPI 3: Avg Invoice -->
+      <div class="card kpi">
+        <div class="kpi-icon average">📊</div>
+        <div class="kpi-value" id="kpiAvg"><span class="skeleton" style="width:80px;display:inline-block">&nbsp;</span></div>
+        <div class="kpi-label">متوسط الفاتورة</div>
+      </div>
+
+      <!-- KPI 4: Net Profit -->
+      <div class="card kpi">
+        <div class="kpi-icon profit">📈</div>
+        <div class="kpi-value" id="kpiProfit"><span class="skeleton" style="width:80px;display:inline-block">&nbsp;</span></div>
+        <div class="kpi-label">صافي الربح</div>
+      </div>
+
+      <!-- Shift Status -->
+      <div class="card card-span-2">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">⏱️</span> حالة الوردية</span>
+          <span class="status-badge closed" id="shiftBadge"><span class="status-dot"></span> <span id="shiftStatusText">—</span></span>
+        </div>
+        <div class="shift-grid" id="shiftGrid">
+          <div class="shift-item"><span class="label">الكاشير</span><span class="value" id="shiftCashier">—</span></div>
+          <div class="shift-item"><span class="label">وقت الافتتاح</span><span class="value" id="shiftOpenTime">—</span></div>
+          <div class="shift-item"><span class="label">الرصيد الافتتاحي</span><span class="value" id="shiftBalance">—</span></div>
+          <div class="shift-item"><span class="label">المبيعات النقدية</span><span class="value" id="shiftCashSales">—</span></div>
+        </div>
+      </div>
+
+      <!-- Low Stock -->
+      <div class="card card-span-2">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">📦</span> تنبيهات المخزون المنخفض</span>
+          <span class="header-badge" style="color:var(--danger);background:var(--danger-soft)" id="stockCount">٠</span>
+        </div>
+        <div class="stock-list" id="stockList">
+          <div class="empty-state"><span class="icon">✅</span>لا توجد تنبيهات مخزون</div>
+        </div>
+      </div>
+
+      <!-- Sales Chart (Bar) -->
+      <div class="card card-span-2">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">📉</span> مبيعات آخر 7 أيام</span>
+        </div>
+        <div class="chart-container"><canvas id="salesChart"></canvas></div>
+      </div>
+
+      <!-- Category Pie Chart -->
+      <div class="card card-span-2">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">🥧</span> المبيعات حسب الفئة</span>
+        </div>
+        <div class="chart-container"><canvas id="categoryChart"></canvas></div>
+      </div>
+
+      <!-- Staff Performance -->
+      <div class="card card-span-2">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">👥</span> أداء الموظفين</span>
+        </div>
+        <div class="staff-list" id="staffList">
+          <div class="empty-state"><span class="icon">👤</span>لا توجد بيانات أداء</div>
+        </div>
+      </div>
+
+      <!-- Latest Invoices Table -->
+      <div class="card card-span-4" style="--_delay:.35s">
+        <div class="card-header">
+          <span class="card-title"><span class="icon">🗒️</span> آخر ٢٠ فاتورة</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الفاتورة</th>
+                <th>الكاشير</th>
+                <th>المبلغ</th>
+                <th>طريقة الدفع</th>
+                <th>النوع</th>
+                <th>الوقت</th>
+              </tr>
+            </thead>
+            <tbody id="invoicesTbody">
+              <tr><td colspan="6" style="text-align:center;padding:32px"><span class="skeleton" style="width:200px;display:inline-block">&nbsp;</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /grid -->
+  </main>
+</div>
+
+<!-- ═══════════════════ JAVASCRIPT ═══════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  /* ────── State ────── */
+  let pin = '';
+  let authToken = sessionStorage.getItem('cashi_token') || '';
+  let salesChart = null;
+  let categoryChart = null;
+  let refreshInterval = null;
+  let isOnline = true;
+
+  /* ────── DOM refs ────── */
+  const $ = id => document.getElementById(id);
+  const loginScreen  = $('login-screen');
+  const dashboard    = $('dashboard');
+  const pinDots      = $('pinDots').children;
+  const loginError   = $('loginError');
+  const offlineBanner = $('offlineBanner');
+
+  /* ────── Helpers ────── */
+  const fmtCurrency = (n) => {
+    if (n == null || isNaN(n)) return '٠٫٠٠';
+    return Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const fmtNumber = (n) => {
+    if (n == null || isNaN(n)) return '٠';
+    return Number(n).toLocaleString('ar-SA');
+  };
+  const fmtTime = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+  };
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' });
+  };
+
+  const paymentLabel = (method) => {
+    const map = { cash: 'نقدي', card: 'بطاقة', online: 'إلكتروني', credit: 'آجل' };
+    return map[(method || '').toLowerCase()] || method || 'نقدي';
+  };
+  const paymentClass = (method) => {
+    const map = { cash: 'badge-cash', card: 'badge-card', online: 'badge-online', credit: 'badge-online' };
+    return map[(method || '').toLowerCase()] || 'badge-cash';
+  };
+  const orderTypeLabel = (t) => {
+    const map = { dine_in: 'داخلي', takeaway: 'سفري', delivery: 'توصيل', dinein: 'داخلي' };
+    return map[(t || '').toLowerCase()] || t || 'داخلي';
+  };
+  const orderTypeClass = (t) => {
+    const map = { dine_in: 'badge-dine_in', takeaway: 'badge-takeaway', delivery: 'badge-delivery', dinein: 'badge-dine_in' };
+    return map[(t || '').toLowerCase()] || 'badge-dine_in';
+  };
+
+  /* ────── API Fetch Wrapper ────── */
+  async function api(url, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+    try {
+      const res = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+      if (res.status === 401) {
+        // Session expired
+        logout();
+        return null;
+      }
+      setOnline(true);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      setOnline(false);
+      return null;
+    }
+  }
+
+  function setOnline(status) {
+    isOnline = status;
+    offlineBanner.classList.toggle('show', !status);
+    $('refreshDot').classList.toggle('offline', !status);
+    $('refreshLabel').textContent = status ? 'تحديث تلقائي' : 'غير متصل';
+  }
+
+  /* ────── Clock ────── */
+  function updateClock() {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    $('headerTime').textContent = dateStr + '  ·  ' + timeStr;
+  }
+
+  /* ────── PIN Login ────── */
+  function updatePinDots() {
+    Array.from(pinDots).forEach((dot, i) => {
+      dot.classList.toggle('filled', i < pin.length);
+      dot.classList.remove('error');
+    });
+  }
+
+  function shakePin() {
+    Array.from(pinDots).forEach(d => d.classList.add('error'));
+    loginError.textContent = 'رمز PIN غير صحيح';
+    setTimeout(() => { pin = ''; updatePinDots(); loginError.textContent = ''; }, 1200);
+  }
+
+  async function attemptLogin() {
+    if (pin.length !== 4) return;
+    loginError.textContent = 'جارٍ التحقق...';
+    const data = await api('/api/manager/auth', {
+      method: 'POST',
+      body: JSON.stringify({ pin })
+    });
+    if (data && data.success) {
+      authToken = data.token || data.pin || pin;
+      sessionStorage.setItem('cashi_token', authToken);
+      showDashboard();
+    } else {
+      shakePin();
+    }
+  }
+
+  $('pinPad').addEventListener('click', (e) => {
+    const btn = e.target.closest('.pin-btn');
+    if (!btn) return;
+    const val = btn.dataset.val;
+    if (val === 'clear') {
+      pin = pin.slice(0, -1);
+      updatePinDots();
+    } else if (val === 'enter') {
+      attemptLogin();
+    } else if (pin.length < 4) {
+      pin += val;
+      updatePinDots();
+      if (pin.length === 4) setTimeout(attemptLogin, 200);
+    }
+  });
+
+  // Keyboard support
+  document.addEventListener('keydown', (e) => {
+    if (loginScreen.classList.contains('hidden')) return;
+    if (e.key >= '0' && e.key <= '9' && pin.length < 4) {
+      pin += e.key;
+      updatePinDots();
+      if (pin.length === 4) setTimeout(attemptLogin, 200);
+    } else if (e.key === 'Backspace') {
+      pin = pin.slice(0, -1);
+      updatePinDots();
+    } else if (e.key === 'Enter') {
+      attemptLogin();
+    }
+  });
+
+  /* ────── Logout ────── */
+  function logout() {
+    authToken = '';
+    pin = '';
+    sessionStorage.removeItem('cashi_token');
+    clearInterval(refreshInterval);
+    dashboard.classList.remove('visible');
+    dashboard.style.display = 'none';
+    loginScreen.classList.remove('hidden');
+    updatePinDots();
+  }
+  $('btnLogout').addEventListener('click', logout);
+
+  /* ────── Show Dashboard ────── */
+  function showDashboard() {
+    loginScreen.classList.add('hidden');
+    dashboard.style.display = 'block';
+    requestAnimationFrame(() => dashboard.classList.add('visible'));
+    initCharts();
+    fetchAllData();
+    updateClock();
+    setInterval(updateClock, 1000);
+    refreshInterval = setInterval(fetchAllData, 10000);
+  }
+
+  /* ────── Charts Init ────── */
+  const chartFont = { family: 'Cairo', size: 12 };
+  const gridColor = 'rgba(148,163,184,.08)';
+
+  function initCharts() {
+    // Bar chart — last 7 days
+    const ctxBar = $('salesChart').getContext('2d');
+    salesChart = new Chart(ctxBar, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'المبيعات',
+          data: [],
+          backgroundColor: 'rgba(46,125,50,.5)',
+          hoverBackgroundColor: 'rgba(76,175,80,.7)',
+          borderColor: '#2E7D32',
+          borderWidth: 1,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 48,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: chartFont,
+            bodyFont: chartFont,
+            rtl: true,
+            textDirection: 'rtl',
+            callbacks: {
+              label: ctx => fmtCurrency(ctx.raw) + ' ر.س'
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { font: chartFont, color: '#94a3b8' },
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              font: chartFont, color: '#94a3b8',
+              callback: v => fmtNumber(v)
+            },
+            grid: { color: gridColor }
+          }
+        }
+      }
+    });
+
+    // Doughnut chart — categories
+    const ctxPie = $('categoryChart').getContext('2d');
+    categoryChart = new Chart(ctxPie, {
+      type: 'doughnut',
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          backgroundColor: [
+            '#2E7D32','#3b82f6','#f59e0b','#ef4444','#a855f7',
+            '#06b6d4','#ec4899','#14b8a6','#f97316','#6366f1'
+          ],
+          borderWidth: 0,
+          hoverOffset: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {
+            position: 'right',
+            rtl: true,
+            labels: { font: chartFont, color: '#f8fafc', padding: 14, usePointStyle: true, pointStyleWidth: 10 }
+          },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: chartFont,
+            bodyFont: chartFont,
+            rtl: true,
+            textDirection: 'rtl',
+            callbacks: {
+              label: ctx => ctx.label + ': ' + fmtCurrency(ctx.raw) + ' ر.س'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  /* ────── Data Fetching ────── */
+  async function fetchAllData() {
+    const [summary, orders, shift, stock] = await Promise.all([
+      api('/api/reports/sales-summary'),
+      api('/api/orders/latest?limit=20'),
+      api('/api/shifts/active'),
+      api('/api/reports/low-stock'),
+    ]);
+    if (summary) renderSummary(summary);
+    if (orders)  renderOrders(Array.isArray(orders) ? orders : (orders.orders || []));
+    renderShift(shift);
+    renderStock(stock);
+  }
+
+  /* ── Render: Summary (KPIs + Charts + Staff) ── */
+  function renderSummary(d) {
+    $('kpiSales').innerHTML  = '<span class="currency">ر.س</span> ' + fmtCurrency(d.totalSales);
+    $('kpiCount').textContent = fmtNumber(d.orderCount);
+    $('kpiAvg').innerHTML     = '<span class="currency">ر.س</span> ' + fmtCurrency(d.avgOrderValue);
+    $('kpiProfit').innerHTML   = '<span class="currency">ر.س</span> ' + fmtCurrency(d.profit);
+
+    // Bar chart
+    const chart7 = (d.chartData || []).slice(-7);
+    salesChart.data.labels = chart7.map(c => {
+      const dd = new Date(c.date);
+      return dd.toLocaleDateString('ar-SA', { weekday: 'short', day: 'numeric' });
+    });
+    salesChart.data.datasets[0].data = chart7.map(c => c.sales || 0);
+    salesChart.update('none');
+
+    // Category pie
+    const cats = (d.categorySales || []).filter(c => c.value > 0);
+    categoryChart.data.labels = cats.map(c => c.name || 'أخرى');
+    categoryChart.data.datasets[0].data = cats.map(c => c.value);
+    categoryChart.update('none');
+
+    // Staff performance
+    renderStaff(d.staffPerformance || []);
+  }
+
+  /* ── Render: Staff ── */
+  function renderStaff(staff) {
+    const el = $('staffList');
+    if (!staff.length) {
+      el.innerHTML = '<div class="empty-state"><span class="icon">👤</span>لا توجد بيانات أداء</div>';
+      return;
+    }
+    const maxSales = Math.max(...staff.map(s => s.sales || 0), 1);
+    el.innerHTML = staff.map(s => {
+      const pct = ((s.sales || 0) / maxSales * 100).toFixed(0);
+      const initial = (s.name || '?')[0];
+      return `<div class="staff-row">
+        <div class="staff-avatar">${initial}</div>
+        <div class="staff-info">
+          <div class="staff-name">${s.name || 'موظف'}</div>
+          <div class="staff-bar-track"><div class="staff-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="staff-sales">${fmtCurrency(s.sales)} ر.س</div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ── Render: Orders Table ── */
+  function renderOrders(orders) {
+    const tbody = $('invoicesTbody');
+    if (!orders.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><span class="icon">🗒️</span>لا توجد فواتير</td></tr>';
+      return;
+    }
+    tbody.innerHTML = orders.map(o => {
+      const paymentMethod = (o.payments && o.payments.length) ? o.payments[0].method : (o.paymentMethod || 'cash');
+      const pLabel = paymentLabel(paymentMethod);
+      const pClass = paymentClass(paymentMethod);
+      const tLabel = orderTypeLabel(o.orderType);
+      const tClass = orderTypeClass(o.orderType);
+      const cashier = o.cashierName || (o.cashierId ? ('كاشير #' + o.cashierId) : '—');
+      return `<tr>
+        <td style="font-weight:700">#${o.orderNumber || o.id || '—'}</td>
+        <td>${cashier}</td>
+        <td style="direction:ltr;text-align:right;font-weight:700">${fmtCurrency(o.total)} ر.س</td>
+        <td><span class="badge-payment ${pClass}">${pLabel}</span></td>
+        <td><span class="badge-type ${tClass}">${tLabel}</span></td>
+        <td style="color:var(--text-muted)">${fmtTime(o.createdAt)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  /* ── Render: Shift ── */
+  function renderShift(shift) {
+    const badge = $('shiftBadge');
+    if (shift && shift.id) {
+      badge.className = 'status-badge open';
+      $('shiftStatusText').textContent = 'مفتوحة';
+      $('shiftCashier').textContent = shift.cashierName || shift.userName || ('كاشير #' + (shift.cashierId || shift.userId || '—'));
+      $('shiftOpenTime').textContent = fmtTime(shift.startTime || shift.openedAt || shift.createdAt);
+      $('shiftBalance').textContent = fmtCurrency(shift.openingBalance ?? shift.startingCash ?? 0) + ' ر.س';
+      $('shiftCashSales').textContent = fmtCurrency(shift.cashSales ?? shift.totalCash ?? 0) + ' ر.س';
+    } else {
+      badge.className = 'status-badge closed';
+      $('shiftStatusText').textContent = 'مغلقة';
+      $('shiftCashier').textContent = '—';
+      $('shiftOpenTime').textContent = '—';
+      $('shiftBalance').textContent = '—';
+      $('shiftCashSales').textContent = '—';
+    }
+  }
+
+  /* ── Render: Low Stock ── */
+  function renderStock(items) {
+    const el = $('stockList');
+    const list = Array.isArray(items) ? items : (items && items.items ? items.items : []);
+    $('stockCount').textContent = fmtNumber(list.length);
+    if (!list.length) {
+      el.innerHTML = '<div class="empty-state"><span class="icon">✅</span>لا توجد تنبيهات مخزون</div>';
+      return;
+    }
+    el.innerHTML = list.map(item => {
+      const qty = item.currentStock ?? item.quantity ?? item.stock ?? 0;
+      const min = item.minStock ?? item.minimumStock ?? item.reorderLevel ?? 5;
+      const critical = qty <= Math.ceil(min / 2);
+      return `<div class="stock-item">
+        <span class="stock-name">${item.name || item.itemName || 'عنصر'}</span>
+        <span class="stock-qty ${critical ? '' : 'warning'}">${fmtNumber(qty)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  /* ────── Auto-login if token exists ────── */
+  if (authToken) {
+    showDashboard();
+  }
+
+})();
+</script>
+</body>
+</html>

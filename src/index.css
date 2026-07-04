@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #2E7D32;
+  --color-brand-light: #4CAF50;
+  --color-brand-bg-light: #EAF4EA;
+  --color-brand-bg: #F5F5F4;
+  --color-brand-card: #FFFFFF;
+  --color-brand-text: #1C2321;
+  --color-brand-text-muted: #6B746F;
+  
+  --color-table-free: #22C55E;
+  --color-table-merged: #3B82F6;
+  --color-table-occupied: #F97316;
+  --color-table-reserved: #EF4444;
+}
+
+html {
+  font-family: var(--font-sans);
+  background-color: var(--color-brand-bg);
+  color: var(--color-brand-text);
+  direction: rtl;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  user-select: none; /* Ideal for POS/touch terminals */
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Keypad Grid Animation */
+@keyframes press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.keypad-button:active {
+  animation: press 0.1s ease-in-out;
+}
+
