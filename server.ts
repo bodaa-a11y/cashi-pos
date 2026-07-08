@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { MongoClient } from "mongodb";
 import http from "http";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
@@ -17,8 +18,48 @@ let BACKUPS_DIR = path.join(process.cwd(), "backups");
 let LOGS_DIR = path.join(process.cwd(), "logs");
 
 // =============================================
-// دوال الحماية وتشفير الرموز (SHA-256 Hashing)
+// مفتاح التوقيع المشترك (HMAC Secret) - عشوائي عند البدء لزيادة الأمان
 // =============================================
+const JWT_SECRET = crypto.randomBytes(32).toString("hex");
+
+// =============================================
+// دوال التشفير المخصصة بأملاح فريدة (Per-User Salted Hashing)
+// =============================================
+function generateSalt(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function hashWithSalt(input: any, salt: string): string {
+  const inputStr = String(input || "");
+  return crypto.createHmac("sha256", salt).update(inputStr).digest("hex");
+}
+
+// دالة توقيع التوكن بنظام HMAC للتأمين ومنع التلاعب
+function generateToken(payload: { id: string; username: string; role: string }): string {
+  const expiry = Date.now() + 12 * 60 * 60 * 1000; // صلاحية التوكن 12 ساعة
+  const data = JSON.stringify({ ...payload, expiry });
+  const dataBase64 = Buffer.from(data).toString("base64");
+  const signature = crypto.createHmac("sha256", JWT_SECRET).update(dataBase64).digest("hex");
+  return `${dataBase64}.${signature}`;
+}
+
+// التحقق من صحة التوكن ومطابقة التوقيع
+function verifyToken(token: string): { id: string; username: string; role: string } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+    const [dataBase64, signature] = parts;
+    const expectedSignature = crypto.createHmac("sha256", JWT_SECRET).update(dataBase64).digest("hex");
+    if (signature !== expectedSignature) return null;
+    const data = JSON.parse(Buffer.from(dataBase64, "base64").toString("utf-8"));
+    if (data.expiry < Date.now()) return null; // منتهي الصلاحية
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+// لضمان التوافقية القديمة
 function hashPIN(pin: any): string {
   const pinStr = String(pin || "");
   const salt = "cashi_secure_salt_2026";
@@ -114,70 +155,130 @@ function saveBase64Image(base64Str: string, destDir: string): string | null {
 // =============================================
 // دوال قراءة وكتابة قاعدة البيانات
 // =============================================
-function readDB() {
+let cachedDB: any = null;
+let mongoCollection: any = null;
+
+function getSeedData() {
+  return {
+    settings: null,
+    users: [
+      { id: "u-1", fullName: "أحمد كاشير", username: "cashier", role: "cashier", pinCode: hashPIN("1234"), passwordHash: hashPIN("1234"), isActive: true, createdAt: new Date().toISOString() },
+      { id: "u-2", fullName: "سليمان أدمن", username: "admin", role: "admin", pinCode: hashPIN("0000"), passwordHash: hashPIN("0000"), isActive: true, createdAt: new Date().toISOString() },
+      { id: "u-3", fullName: "خالد مدير", username: "manager", role: "manager", pinCode: hashPIN("2222"), passwordHash: hashPIN("2222"), isActive: true, createdAt: new Date().toISOString() },
+      { id: "u-4", fullName: "يوسف نادل", username: "waiter", role: "waiter", pinCode: hashPIN("1111"), isActive: true, createdAt: new Date().toISOString() },
+      { id: "u-5", fullName: "سارة نادلة", username: "waiter2", role: "waiter", pinCode: hashPIN("3333"), isActive: true, createdAt: new Date().toISOString() }
+    ],
+    categories: [
+      { id: "c-1", nameAr: "الأطباق الرئيسية", nameEn: "Main Dishes", sortOrder: 1, isActive: true },
+      { id: "c-2", nameAr: "المقبلات والشوربات", nameEn: "Appetizers", sortOrder: 2, isActive: true },
+      { id: "c-3", nameAr: "المشروبات الباردة", nameEn: "Cold Drinks", sortOrder: 3, isActive: true },
+      { id: "c-4", nameAr: "المشروبات الساخنة", nameEn: "Hot Drinks", sortOrder: 4, isActive: true },
+      { id: "c-5", nameAr: "الحلويات الشرقية", nameEn: "Desserts", sortOrder: 5, isActive: true }
+    ],
+    products: [
+      { id: "p-1", categoryId: "c-1", nameAr: "شاورما دجاج سوبر", nameEn: "Super Chicken Shawarma", description: "شاورما دجاج فاخرة مع الثوم والمخلل والبطاطس", price: 18.00, cost: 7.00, barcode: "62811001", isActive: true, trackInventory: true, quantity: 85, image: null },
+      { id: "p-2", categoryId: "c-1", nameAr: "كبسة لحم نعيمي غنم", nameEn: "Meat Kabsa", description: "أرز بسمتي مع لحم نعيمي طازج والمكسرات والبهارات", price: 55.00, cost: 25.00, barcode: "62811002", isActive: true, trackInventory: true, quantity: 30, image: null },
+      { id: "p-3", categoryId: "c-1", nameAr: "منسف أردني بالجميد الكركي", nameEn: "Jordanian Mansaf", description: "المنسف الأردني التقليدي مع اللحم والجميد البلدي", price: 65.00, cost: 30.00, barcode: "62811003", isActive: true, trackInventory: true, quantity: 20, image: null },
+      { id: "p-4", categoryId: "c-2", nameAr: "صحن حمص ناعم بالزيت", nameEn: "Hummus Plate", description: "حمص بلدي ناعم مع زيت الزيتون البكر", price: 8.00, cost: 2.50, barcode: "62811004", isActive: true, trackInventory: true, quantity: 150, image: null },
+      { id: "p-5", categoryId: "c-2", nameAr: "سلطة فتوش لبنانية بدبس الرمان", nameEn: "Fattoush Salad", description: "خضار طازجة مع الخبز المحمص ودبس الرمان", price: 12.00, cost: 3.00, barcode: "62811005", isActive: true, trackInventory: true, quantity: 120, image: null },
+      { id: "p-6", categoryId: "c-3", nameAr: "عصير برتقال طازج بارد", nameEn: "Fresh Orange Juice", description: "عصير برتقال طبيعي معصور طازج بدون سكر", price: 15.00, cost: 4.00, barcode: "62811006", isActive: true, trackInventory: true, quantity: 200, image: null },
+      { id: "p-7", categoryId: "c-3", nameAr: "كوكا كولا علبة بارد", nameEn: "Coca Cola Can", description: "مشروب غازي كوكا كولا بارد 330 مل", price: 5.00, cost: 1.50, barcode: "62811007", isActive: true, trackInventory: true, quantity: 45, image: null },
+      { id: "p-8", categoryId: "c-4", nameAr: "شاي أكبر أخضر 100 جم", nameEn: "Akbar Green Tea 100g", description: "شاي أخضر سيلاني فاخر علبة معدنية", price: 10.00, cost: 3.50, barcode: "62811008", isActive: true, trackInventory: true, quantity: 60, image: null },
+      { id: "p-9", categoryId: "c-4", nameAr: "كابتشينو برغوة كثيفة", nameEn: "Cappuccino", description: "إسبريسو غني مع حليب مبخر ورغوة حليب", price: 14.00, cost: 4.50, barcode: "62811009", isActive: true, trackInventory: true, quantity: 95, image: null },
+      { id: "p-10", categoryId: "c-5", nameAr: "كنافة نابلسية خشنة بالجبن", nameEn: "Cheese Knafeh", description: "كنافة نابلسية بالجبن العكاوي الساخن والقطر", price: 18.00, cost: 6.00, barcode: "62811010", isActive: true, trackInventory: true, quantity: 40, image: null }
+    ],
+    restaurant_tables: [
+      { id: "t-1", label: "طاولة 1 (عائلية)", seats: 6, status: "free", posX: 100, posY: 100 },
+      { id: "t-2", label: "طاولة 2", seats: 4, status: "free", posX: 250, posY: 100 },
+      { id: "t-3", label: "طاولة 3 (VIP)", seats: 8, status: "free", posX: 400, posY: 100 },
+      { id: "t-4", label: "طاولة 4", seats: 2, status: "free", posX: 100, posY: 250 },
+      { id: "t-5", label: "طاولة 5", seats: 4, status: "free", posX: 250, posY: 250 },
+      { id: "t-6", label: "طاولة 6", seats: 4, status: "free", posX: 400, posY: 250 }
+    ],
+    shifts: [],
+    cash_movements: [],
+    customers: [
+      { id: "cust-1", fullName: "عبد الله محمد", phone: "0551234567", notes: "عميل دائم يفضل شاورما بدون مخلل", createdAt: new Date().toISOString() },
+      { id: "cust-2", fullName: "منى العتيبي", phone: "0569876543", notes: "تطلب ديلفري دائمًا", createdAt: new Date().toISOString() }
+    ],
+    held_orders: [],
+    orders: [],
+    inventory_items: [
+      { id: "i-1", nameAr: "دجاج شاورما متبل", unit: "كجم", quantity: 45, lowStockThreshold: 10 },
+      { id: "i-2", nameAr: "أرز بسمتي هندي", unit: "كجم", quantity: 120, lowStockThreshold: 20 },
+      { id: "i-3", nameAr: "جبنة عكاوي بلدي", unit: "كجم", quantity: 8, lowStockThreshold: 15 },
+      { id: "i-4", nameAr: "بن قهوة كولومبي", unit: "كجم", quantity: 3, lowStockThreshold: 5 }
+    ],
+    inventory_transactions: [],
+    recipes: [],
+    print_jobs: [],
+    audit_logs: []
+  };
+}
+
+function readLocalDBOnly() {
   if (!fs.existsSync(DB_FILE)) {
-    const seedData = {
-      settings: null,
-      users: [
-        { id: "u-1", fullName: "أحمد كاشير", username: "cashier", role: "cashier", pinCode: hashPIN("1234"), passwordHash: hashPIN("1234"), isActive: true, createdAt: new Date().toISOString() },
-        { id: "u-2", fullName: "سليمان أدمن", username: "admin", role: "admin", pinCode: hashPIN("0000"), passwordHash: hashPIN("0000"), isActive: true, createdAt: new Date().toISOString() },
-        { id: "u-3", fullName: "خالد مدير", username: "manager", role: "manager", pinCode: hashPIN("2222"), passwordHash: hashPIN("2222"), isActive: true, createdAt: new Date().toISOString() },
-        { id: "u-4", fullName: "يوسف نادل", username: "waiter", role: "waiter", pinCode: hashPIN("1111"), isActive: true, createdAt: new Date().toISOString() },
-        { id: "u-5", fullName: "سارة نادلة", username: "waiter2", role: "waiter", pinCode: hashPIN("3333"), isActive: true, createdAt: new Date().toISOString() }
-      ],
-      categories: [
-        { id: "c-1", nameAr: "الأطباق الرئيسية", nameEn: "Main Dishes", sortOrder: 1, isActive: true },
-        { id: "c-2", nameAr: "المقبلات والشوربات", nameEn: "Appetizers", sortOrder: 2, isActive: true },
-        { id: "c-3", nameAr: "المشروبات الباردة", nameEn: "Cold Drinks", sortOrder: 3, isActive: true },
-        { id: "c-4", nameAr: "المشروبات الساخنة", nameEn: "Hot Drinks", sortOrder: 4, isActive: true },
-        { id: "c-5", nameAr: "الحلويات الشرقية", nameEn: "Desserts", sortOrder: 5, isActive: true }
-      ],
-      products: [
-        { id: "p-1", categoryId: "c-1", nameAr: "شاورما دجاج سوبر", nameEn: "Super Chicken Shawarma", description: "شاورما دجاج فاخرة مع الثوم والمخلل والبطاطس", price: 18.00, cost: 7.00, barcode: "62811001", isActive: true, trackInventory: true, quantity: 85, image: null },
-        { id: "p-2", categoryId: "c-1", nameAr: "كبسة لحم نعيمي غنم", nameEn: "Meat Kabsa", description: "أرز بسمتي مع لحم نعيمي طازج والمكسرات والبهارات", price: 55.00, cost: 25.00, barcode: "62811002", isActive: true, trackInventory: true, quantity: 30, image: null },
-        { id: "p-3", categoryId: "c-1", nameAr: "منسف أردني بالجميد الكركي", nameEn: "Jordanian Mansaf", description: "المنسف الأردني التقليدي مع اللحم والجميد البلدي", price: 65.00, cost: 30.00, barcode: "62811003", isActive: true, trackInventory: true, quantity: 20, image: null },
-        { id: "p-4", categoryId: "c-2", nameAr: "صحن حمص ناعم بالزيت", nameEn: "Hummus Plate", description: "حمص بلدي ناعم مع زيت الزيتون البكر", price: 8.00, cost: 2.50, barcode: "62811004", isActive: true, trackInventory: true, quantity: 150, image: null },
-        { id: "p-5", categoryId: "c-2", nameAr: "سلطة فتوش لبنانية بدبس الرمان", nameEn: "Fattoush Salad", description: "خضار طازجة مع الخبز المحمص ودبس الرمان", price: 12.00, cost: 3.00, barcode: "62811005", isActive: true, trackInventory: true, quantity: 120, image: null },
-        { id: "p-6", categoryId: "c-3", nameAr: "عصير برتقال طازج بارد", nameEn: "Fresh Orange Juice", description: "عصير برتقال طبيعي معصور طازج بدون سكر", price: 15.00, cost: 4.00, barcode: "62811006", isActive: true, trackInventory: true, quantity: 200, image: null },
-        { id: "p-7", categoryId: "c-3", nameAr: "كوكا كولا علبة بارد", nameEn: "Coca Cola Can", description: "مشروب غازي كوكا كولا بارد 330 مل", price: 5.00, cost: 1.50, barcode: "62811007", isActive: true, trackInventory: true, quantity: 45, image: null },
-        { id: "p-8", categoryId: "c-4", nameAr: "شاي أكبر أخضر 100 جم", nameEn: "Akbar Green Tea 100g", description: "شاي أخضر سيلاني فاخر علبة معدنية", price: 10.00, cost: 3.50, barcode: "62811008", isActive: true, trackInventory: true, quantity: 60, image: null },
-        { id: "p-9", categoryId: "c-4", nameAr: "كابتشينو برغوة كثيفة", nameEn: "Cappuccino", description: "إسبريسو غني مع حليب مبخر ورغوة حليب", price: 14.00, cost: 4.50, barcode: "62811009", isActive: true, trackInventory: true, quantity: 95, image: null },
-        { id: "p-10", categoryId: "c-5", nameAr: "كنافة نابلسية خشنة بالجبن", nameEn: "Cheese Knafeh", description: "كنافة نابلسية بالجبن العكاوي الساخن والقطر", price: 18.00, cost: 6.00, barcode: "62811010", isActive: true, trackInventory: true, quantity: 40, image: null }
-      ],
-      restaurant_tables: [
-        { id: "t-1", label: "طاولة 1 (عائلية)", seats: 6, status: "free", posX: 100, posY: 100 },
-        { id: "t-2", label: "طاولة 2", seats: 4, status: "free", posX: 250, posY: 100 },
-        { id: "t-3", label: "طاولة 3 (VIP)", seats: 8, status: "free", posX: 400, posY: 100 },
-        { id: "t-4", label: "طاولة 4", seats: 2, status: "free", posX: 100, posY: 250 },
-        { id: "t-5", label: "طاولة 5", seats: 4, status: "free", posX: 250, posY: 250 },
-        { id: "t-6", label: "طاولة 6", seats: 4, status: "free", posX: 400, posY: 250 }
-      ],
-      shifts: [],
-      cash_movements: [],
-      customers: [
-        { id: "cust-1", fullName: "عبد الله محمد", phone: "0551234567", notes: "عميل دائم يفضل شاورما بدون مخلل", createdAt: new Date().toISOString() },
-        { id: "cust-2", fullName: "منى العتيبي", phone: "0569876543", notes: "تطلب ديلفري دائمًا", createdAt: new Date().toISOString() }
-      ],
-      held_orders: [],
-      orders: [],
-      inventory_items: [
-        { id: "i-1", nameAr: "دجاج شاورما متبل", unit: "كجم", quantity: 45, lowStockThreshold: 10 },
-        { id: "i-2", nameAr: "أرز بسمتي هندي", unit: "كجم", quantity: 120, lowStockThreshold: 20 },
-        { id: "i-3", nameAr: "جبنة عكاوي بلدي", unit: "كجم", quantity: 8, lowStockThreshold: 15 },
-        { id: "i-4", nameAr: "بن قهوة كولومبي", unit: "كجم", quantity: 3, lowStockThreshold: 5 }
-      ],
-      inventory_transactions: [],
-      print_jobs: [],
-      audit_logs: []
-    };
+    const seedData = getSeedData();
     fs.writeFileSync(DB_FILE, JSON.stringify(seedData, null, 2), "utf-8");
     return seedData;
   }
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  } catch (e) {
+    console.error("Error reading db.json, using fallback seed data:", e);
+    return getSeedData();
+  }
+}
+
+function loadLocalDB() {
+  cachedDB = readLocalDBOnly();
+}
+
+async function initCloudDB() {
+  const mongoUri = process.env.MONGODB_URI;
+  if (mongoUri) {
+    console.log("🔗 [كاشي سحابي] جاري الاتصال بقاعدة بيانات MongoDB السحابية...");
+    try {
+      const client = new MongoClient(mongoUri);
+      await client.connect();
+      const db = client.db(process.env.MONGODB_DB || "cashi_db");
+      mongoCollection = db.collection("cashi_pos_state");
+      
+      const doc = await mongoCollection.findOne({ _id: "cashi_pos" });
+      if (doc && doc.data) {
+        cachedDB = doc.data;
+        console.log("✅ [كاشي سحابي] تم تحميل البيانات بنجاح من MongoDB.");
+      } else {
+        console.log("🌱 [كاشي سحابي] لم يتم العثور على بيانات سابقة. جاري تهيئة قاعدة البيانات بالبيانات الافتراضية...");
+        cachedDB = readLocalDBOnly();
+        await mongoCollection.updateOne({ _id: "cashi_pos" }, { $set: { data: cachedDB } }, { upsert: true });
+        console.log("✅ [كاشي سحابي] تم رفع البيانات الافتراضية إلى MongoDB.");
+      }
+    } catch (err) {
+      console.error("❌ [كاشي سحابي] فشل الاتصال بـ MongoDB. سيتم استخدام قاعدة البيانات المحلية:", err);
+      loadLocalDB();
+    }
+  } else {
+    loadLocalDB();
+  }
+}
+
+function readDB() {
+  if (!cachedDB) {
+    loadLocalDB();
+  }
+  return cachedDB;
 }
 
 function writeDB(data: any) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
+  cachedDB = data;
+  if (mongoCollection) {
+    mongoCollection.updateOne({ _id: "cashi_pos" }, { $set: { data: cachedDB } }, { upsert: true }).catch((err: any) => {
+      console.error("❌ [كاشي سحابي] فشل حفظ التعديلات في MongoDB:", err);
+    });
+  } else {
+    fs.writeFileSync(DB_FILE, JSON.stringify(cachedDB, null, 2), "utf-8");
+  }
 }
 
 // =============================================
@@ -290,15 +391,59 @@ export function createServer(dbPath?: string) {
   });
 
   // =============================================
+  // ميدلوير التحقق من الصلاحيات (Authentication Middleware)
+  // =============================================
+  function authenticate(allowedRoles: string[]) {
+    return (req: any, res: any, next: any) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        const isLocal = req.ip === "127.0.0.1" || req.ip === "::1" || req.ip === "::ffff:127.0.0.1";
+        if (isLocal) {
+          return next();
+        }
+        return res.status(401).json({ error: "غير مصرح: يجب تسجيل الدخول أولاً" });
+      }
+
+      const token = authHeader.split(" ")[1];
+      if (!token) {
+        return res.status(401).json({ error: "غير مصرح: صيغة التوكن غير صالحة" });
+      }
+
+      const match = token.match(/(?:jwt|manager)-token-(.+)/);
+      if (!match) {
+        return res.status(401).json({ error: "غير مصرح: توكن غير صالح" });
+      }
+
+      const userId = match[1];
+      const db = readDB();
+      const user = db.users.find((u: any) => u.id === userId && u.isActive);
+
+      if (!user) {
+        return res.status(401).json({ error: "غير مصرح: المستخدم غير موجود أو تم تعطيله" });
+      }
+
+      if (allowedRoles && !allowedRoles.includes(user.role)) {
+        return res.status(403).json({ error: "غير مصرح: ليس لديك الصلاحيات الكافية للقيام بهذا الإجراء" });
+      }
+
+      req.user = user;
+      next();
+    };
+  }
+
+  // =============================================
   // المصادقة (Auth)
   // =============================================
   app.post("/api/auth/login", (req, res) => {
     const { username, password } = req.body;
     const db = readDB();
-    const hashedPassword = hashPIN(password);
-    const user = db.users.find(
-      (u: any) => u.username === username && u.passwordHash === hashedPassword && u.isActive
-    );
+    const user = db.users.find((u: any) => {
+      if (u.username !== username || !u.isActive) return false;
+      if (u.passwordSalt) {
+        return u.passwordHash === hashWithSalt(password, u.passwordSalt);
+      }
+      return u.passwordHash === hashPIN(password);
+    });
     if (user) {
       writeAuditLog("دخول الإدارة", user.id, user.fullName, `تسجيل دخول ناجح باستخدام اسم المستخدم: ${username}`);
       res.json({ success: true, token: `jwt-token-${user.id}`, user });
@@ -310,8 +455,13 @@ export function createServer(dbPath?: string) {
   app.post("/api/auth/pin-login", (req, res) => {
     const { pin } = req.body;
     const db = readDB();
-    const hashedPin = hashPIN(pin);
-    const user = db.users.find((u: any) => u.pinCode === hashedPin && u.isActive);
+    const user = db.users.find((u: any) => {
+      if (!u.isActive) return false;
+      if (u.pinSalt) {
+        return u.pinHash === hashWithSalt(pin, u.pinSalt);
+      }
+      return u.pinCode === hashPIN(pin);
+    });
     if (user) {
       writeAuditLog("دخول الكاشير", user.id, user.fullName, `تسجيل دخول ناجح للمحطة بالرمز السريع`);
       res.json({ success: true, token: `jwt-token-${user.id}`, user });
@@ -324,10 +474,13 @@ export function createServer(dbPath?: string) {
   app.post("/api/manager/auth", (req, res) => {
     const { pin } = req.body;
     const db = readDB();
-    const hashedPin = hashPIN(pin);
-    const user = db.users.find(
-      (u: any) => u.pinCode === hashedPin && u.isActive && (u.role === "admin" || u.role === "manager")
-    );
+    const user = db.users.find((u: any) => {
+      if (!u.isActive || (u.role !== "admin" && u.role !== "manager")) return false;
+      if (u.pinSalt) {
+        return u.pinHash === hashWithSalt(pin, u.pinSalt);
+      }
+      return u.pinCode === hashPIN(pin);
+    });
     if (user) {
       writeAuditLog("دخول المدير عن بعد", user.id, user.fullName, `تسجيل دخول ناجح للوحة المراقبة عن بعد`);
       res.json({ success: true, token: `manager-token-${user.id}`, user });
@@ -650,18 +803,40 @@ export function createServer(dbPath?: string) {
     writeAuditLog("إصدار فاتورة", order.cashierId || "system", order.cashierName || "كاشير", `تم إصدار الفاتورة رقم #${orderNumber} بقيمة إجمالية: ${order.total} ر.س (${order.orderType === "dine_in" ? "داخلي" : order.orderType === "takeaway" ? "سفري" : "توصيل"})`);
 
     syncedOrder.items.forEach((item: any) => {
-      const prod = db.products.find((p: any) => p.id === item.productId);
-      if (prod && prod.trackInventory) {
-        prod.quantity = Math.max(0, (prod.quantity || 0) - item.quantity);
-        db.inventory_transactions.push({
-          id: `it-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          inventoryItemId: prod.id,
-          changeQty: -item.quantity,
-          reason: `فاتورة بيع رقم ${orderNumber}`,
-          orderId: order.id,
-          createdBy: order.cashierId,
-          createdAt: new Date().toISOString()
+      // 1. البحث عن وصفة للمنتج
+      const recipe = db.recipes ? db.recipes.find((r: any) => r.productId === item.productId) : null;
+      if (recipe && recipe.ingredients && recipe.ingredients.length > 0) {
+        recipe.ingredients.forEach((ing: any) => {
+          const rawItem = db.inventory_items.find((i: any) => i.id === ing.inventoryItemId);
+          if (rawItem) {
+            const consumed = ing.amount * item.quantity;
+            rawItem.quantity = Math.max(0, rawItem.quantity - consumed);
+            db.inventory_transactions.push({
+              id: `it-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              inventoryItemId: rawItem.id,
+              changeQty: -consumed,
+              reason: `بيع منتج (${item.productNameSnapshot}) فاتورة #${orderNumber}`,
+              orderId: order.id,
+              createdBy: order.cashierId,
+              createdAt: new Date().toISOString()
+            });
+          }
         });
+      } else {
+        // 2. إذا لم توجد وصفة، نفترض التتبع البسيط للمنتج نفسه (سلوك قديم)
+        const prod = db.products.find((p: any) => p.id === item.productId);
+        if (prod && prod.trackInventory) {
+          prod.quantity = Math.max(0, (prod.quantity || 0) - item.quantity);
+          db.inventory_transactions.push({
+            id: `it-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            inventoryItemId: prod.id,
+            changeQty: -item.quantity,
+            reason: `فاتورة بيع رقم ${orderNumber}`,
+            orderId: order.id,
+            createdBy: order.cashierId,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
     });
 
@@ -785,12 +960,103 @@ export function createServer(dbPath?: string) {
   // =============================================
   app.get("/api/inventory", (req, res) => {
     const db = readDB();
-    res.json(db.inventory_items);
+    res.json(db.inventory_items || []);
+  });
+
+  app.post("/api/inventory", (req, res) => {
+    const db = readDB();
+    const newItem = {
+      id: `i-${Date.now()}`,
+      nameAr: req.body.nameAr,
+      unit: req.body.unit,
+      quantity: Number(req.body.quantity) || 0,
+      lowStockThreshold: Number(req.body.lowStockThreshold) || 0
+    };
+    db.inventory_items.push(newItem);
+    writeDB(db);
+    res.json({ success: true, item: newItem });
+  });
+
+  app.put("/api/inventory/:id", (req, res) => {
+    const db = readDB();
+    const item = db.inventory_items.find((i: any) => i.id === req.params.id);
+    if (item) {
+      const oldQty = item.quantity;
+      item.nameAr = req.body.nameAr !== undefined ? req.body.nameAr : item.nameAr;
+      item.unit = req.body.unit !== undefined ? req.body.unit : item.unit;
+      item.quantity = req.body.quantity !== undefined ? Number(req.body.quantity) : item.quantity;
+      item.lowStockThreshold = req.body.lowStockThreshold !== undefined ? Number(req.body.lowStockThreshold) : item.lowStockThreshold;
+      
+      const diff = item.quantity - oldQty;
+      if (diff !== 0) {
+        db.inventory_transactions.push({
+          id: `it-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          inventoryItemId: item.id,
+          changeQty: diff,
+          reason: req.body.reason || "تعديل يدوي للمخزون",
+          createdBy: "admin",
+          createdAt: new Date().toISOString()
+        });
+      }
+      writeDB(db);
+      res.json({ success: true, item });
+    } else {
+      res.status(404).json({ error: "المادة الخام غير موجودة" });
+    }
+  });
+
+  app.delete("/api/inventory/:id", (req, res) => {
+    const db = readDB();
+    const index = db.inventory_items.findIndex((i: any) => i.id === req.params.id);
+    if (index !== -1) {
+      db.inventory_items.splice(index, 1);
+      
+      // Also clean up any recipes using this inventory item
+      if (db.recipes) {
+        db.recipes.forEach((r: any) => {
+          r.ingredients = r.ingredients.filter((ing: any) => ing.inventoryItemId !== req.params.id);
+        });
+      }
+      
+      writeDB(db);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "المادة الخام غير موجودة" });
+    }
+  });
+
+  app.get("/api/recipes", (req, res) => {
+    const db = readDB();
+    res.json(db.recipes || []);
+  });
+
+  app.post("/api/recipes", (req, res) => {
+    const db = readDB();
+    if (!db.recipes) db.recipes = [];
+    
+    const { productId, ingredients } = req.body;
+    const index = db.recipes.findIndex((r: any) => r.productId === productId);
+    
+    const recipe = {
+      productId,
+      ingredients: (ingredients || []).map((ing: any) => ({
+        inventoryItemId: ing.inventoryItemId,
+        amount: Number(ing.amount) || 0
+      }))
+    };
+    
+    if (index !== -1) {
+      db.recipes[index] = recipe;
+    } else {
+      db.recipes.push(recipe);
+    }
+    writeDB(db);
+    res.json({ success: true, recipe });
   });
 
   app.get("/api/reports/low-stock", (req, res) => {
     const db = readDB();
-    const items = db.inventory_items.filter((item: any) => item.quantity <= item.lowStockThreshold);
+    const items = (db.inventory_items || []).filter((item: any) => item.quantity <= item.lowStockThreshold);
     res.json(items);
   });
 
@@ -837,7 +1103,6 @@ export function createServer(dbPath?: string) {
     const db = readDB();
     res.json(db.users);
   });
-
   // إضافة موظف جديد
   app.post("/api/users", (req, res) => {
     const { fullName, username, role, pinCode, password } = req.body;
@@ -845,27 +1110,41 @@ export function createServer(dbPath?: string) {
       return res.status(400).json({ error: "الرجاء تعبئة الحقول المطلوبة (الاسم الكامل، الدور، رمز PIN)" });
     }
     const db = readDB();
-    const hashedPin = hashPIN(pinCode);
-    if (db.users.some((u: any) => u.pinCode === hashedPin && u.isActive)) {
+    
+    // Check for duplicate PIN
+    const pinDuplicate = db.users.some((u: any) => {
+      if (!u.isActive) return false;
+      if (u.pinSalt) {
+        return hashWithSalt(pinCode, u.pinSalt) === u.pinHash;
+      }
+      return u.pinCode === hashPIN(pinCode);
+    });
+    if (pinDuplicate) {
       return res.status(400).json({ error: "رمز PIN هذا مستخدم بالفعل من قبل موظف آخر" });
     }
     if (username && db.users.some((u: any) => u.username === username && u.isActive)) {
       return res.status(400).json({ error: "اسم المستخدم هذا موجود بالفعل" });
     }
 
+    const pinSalt = generateSalt();
+    const passwordSalt = generateSalt();
+
     const newUser = {
       id: `u-${Date.now()}`,
       fullName,
       username: username || "",
       role,
-      pinCode: hashedPin,
-      passwordHash: password ? hashPIN(password) : hashedPin,
+      pinSalt,
+      pinHash: hashWithSalt(pinCode, pinSalt),
+      passwordSalt,
+      passwordHash: password ? hashWithSalt(password, passwordSalt) : hashWithSalt(pinCode, passwordSalt),
       isActive: true,
       createdAt: new Date().toISOString()
     };
+
     db.users.push(newUser);
     writeDB(db);
-    writeAuditLog("إضافة موظف", "admin", "الإدارة", `تم إضافة موظف جديد: ${fullName} بدور: ${role}`);
+    writeAuditLog("إضافة موظف", "admin", "المدير", `تم إضافة موظف جديد: ${fullName} بدور: ${role}`);
     res.json({ success: true, user: newUser });
   });
 
@@ -874,29 +1153,29 @@ export function createServer(dbPath?: string) {
     const { id } = req.params;
     const { fullName, username, role, pinCode, password, isActive } = req.body;
     const db = readDB();
-    const index = db.users.findIndex((u: any) => u.id === id);
-    if (index === -1) {
+    const user = db.users.find((u: any) => u.id === id);
+    if (!user) {
       return res.status(404).json({ error: "الموظف غير موجود" });
     }
 
-    const user = db.users[index];
     if (fullName) user.fullName = fullName;
     if (username) user.username = username;
     if (role) user.role = role;
     if (isActive !== undefined) user.isActive = !!isActive;
     
     if (pinCode) {
-      user.pinCode = hashPIN(pinCode);
+      if (!user.pinSalt) user.pinSalt = generateSalt();
+      user.pinHash = hashWithSalt(pinCode, user.pinSalt);
     }
     if (password) {
-      user.passwordHash = hashPIN(password);
+      if (!user.passwordSalt) user.passwordSalt = generateSalt();
+      user.passwordHash = hashWithSalt(password, user.passwordSalt);
     }
 
     writeDB(db);
-    writeAuditLog("تعديل موظف", "admin", "الإدارة", `تم تعديل بيانات الموظف: ${user.fullName}`);
+    writeAuditLog("تعديل موظف", "admin", "المدير", `تم تعديل بيانات الموظف: ${user.fullName}`);
     res.json({ success: true, user });
   });
-
   // حذف موظف (تعطيله)
   app.delete("/api/users/:id", (req, res) => {
     const { id } = req.params;
@@ -1083,8 +1362,32 @@ export function createServer(dbPath?: string) {
 
   // تقرير ملخص المبيعات العام (التوافقية مع الكود القديم)
   app.get("/api/reports/sales-summary", (req, res) => {
+    const { from, to, transactionType } = req.query;
     const db = readDB();
-    const completedOrders = db.orders.filter((o: any) => o.status === "completed");
+    
+    let completedOrders = db.orders.filter((o: any) => o.status === "completed");
+    
+    // 1. الفلترة بالتاريخ إذا تم تمريره
+    if (from && to) {
+      completedOrders = filterOrdersByDateRange(db.orders, from as string, to as string);
+    }
+
+    // 2. الفلترة بنوع الدفع / المعاملة
+    if (transactionType && transactionType !== "all") {
+      completedOrders = completedOrders.filter((o: any) => {
+        if (transactionType === "cash") {
+          return (o.payments || []).some((p: any) => p.method === "cash");
+        }
+        if (transactionType === "card") {
+          return (o.payments || []).some((p: any) => p.method === "card");
+        }
+        if (transactionType === "delivery") {
+          return o.orderType === "takeaway";
+        }
+        return true;
+      });
+    }
+
     const summary = calculateOrdersSummary(db, completedOrders);
     res.json(summary);
   });
@@ -1144,10 +1447,139 @@ export function createServer(dbPath?: string) {
     res.status(500).json({ error: "حدث خطأ داخلي في الخادم. تم تسجيل الخطأ في السجلات الفنية." });
   });
 
+  // ─── Cloud Sync Endpoints (Central Cloud Server mode) ───
+  app.post("/api/cloud-sync/test", (req, res) => {
+    res.json({ success: true, message: "تم الاتصال بنجاح بسيرفر كاشي السحابي!" });
+  });
+
+  app.post("/api/cloud-sync/orders", (req, res) => {
+    const { branchId, orders } = req.body;
+    if (!orders || !Array.isArray(orders)) {
+      return res.status(400).json({ error: "بيانات فواتير غير صالحة" });
+    }
+
+    try {
+      const db = readDB();
+      let newCount = 0;
+      
+      orders.forEach((order: any) => {
+        order.branchId = branchId || "main";
+        
+        const exists = db.orders.some((o: any) => o.id === order.id);
+        if (!exists) {
+          db.orders.push(order);
+          newCount++;
+        }
+      });
+
+      if (newCount > 0) {
+        writeDB(db);
+        writeAuditLog("مزامنة سحابية", "cloud", "السحابة", `تم مزامنة ${newCount} فاتورة جديدة من الفرع: ${branchId}`);
+      }
+
+      res.json({ success: true, syncedCount: newCount });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/cloud-sync/menu", (req, res) => {
+    const db = readDB();
+    res.json({
+      categories: db.categories,
+      products: db.products
+    });
+  });
+
+  // ─── Local Client test endpoint ───
+  app.post("/api/settings/test-cloud-sync", authenticate(["admin", "manager"]), async (req, res) => {
+    const { cloudApiUrl, cloudAuthToken, branchId } = req.body;
+    if (!cloudApiUrl) {
+      return res.status(400).json({ error: "الرجاء إدخال رابط المزامنة" });
+    }
+
+    try {
+      const testUrl = `${cloudApiUrl.replace(/\/$/, "")}/api/cloud-sync/test`;
+      const response = await fetch(testUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cloudAuthToken}`
+        },
+        body: JSON.stringify({ branchId })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return res.json({ success: true, message: data.message || "تم الاتصال بنجاح" });
+      } else {
+        return res.status(400).json({ error: `فشل الاتصال: رمز الاستجابة ${response.status}` });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: `فشل الاتصال: ${err.message}` });
+    }
+  });
+
+  function startCloudSyncLoop() {
+    setInterval(async () => {
+      try {
+        const db = readDB();
+        const settings = db.settings;
+        if (!settings || !settings.cloudSyncEnabled || !settings.cloudApiUrl) {
+          return;
+        }
+
+        const unsyncedOrders = db.orders.filter((o: any) => o.cloudSynced === false);
+        if (unsyncedOrders.length > 0) {
+          console.log(`[كاشي سحابي] 🔄 جاري مزامنة ${unsyncedOrders.length} فاتورة مع السحابة...`);
+          const syncUrl = `${settings.cloudApiUrl.replace(/\/$/, "")}/api/cloud-sync/orders`;
+          
+          const response = await fetch(syncUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${settings.cloudAuthToken}`,
+              "X-Branch-ID": settings.branchId || "main"
+            },
+            body: JSON.stringify({
+              branchId: settings.branchId || "main",
+              orders: unsyncedOrders
+            })
+          });
+
+          if (response.ok) {
+            const resData = await response.json();
+            if (resData.success) {
+              console.log(`[كاشي سحابي] ✅ تم مزامنة الفواتير بنجاح.`);
+              const dbToUpdate = readDB();
+              unsyncedOrders.forEach((order: any) => {
+                const localOrder = dbToUpdate.orders.find((o: any) => o.id === order.id);
+                if (localOrder) {
+                  localOrder.cloudSynced = true;
+                  localOrder.cloudSyncedAt = new Date().toISOString();
+                }
+              });
+              writeDB(dbToUpdate);
+            }
+          } else {
+            console.warn(`[كاشي سحابي] ⚠️ فشلت مزامنة الفواتير. رمز الحالة: ${response.status}`);
+          }
+        }
+      } catch (e) {
+        console.error("[كاشي سحابي] ❌ خطأ في محرك المزامنة:", e);
+      }
+    }, 30000); // 30 seconds
+  }
+
   // =============================================
   // دالة بدء تشغيل السيرفر
   // =============================================
-  function start(port: number): Promise<http.Server> {
+  async function start(port: number): Promise<http.Server> {
+    await initCloudDB();
+    if (!process.env.MONGODB_URI) {
+      startCloudSyncLoop();
+    }
+
     return new Promise((resolve, reject) => {
       try {
         const server = app.listen(port, "0.0.0.0", () => {

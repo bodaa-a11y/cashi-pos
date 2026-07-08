@@ -101,45 +101,108 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
   const handlePrintXReport = async () => {
     const electronAPI = (window as any).electronAPI;
     if (!electronAPI) {
-      alert("الطباعة الحرارية متاحة فقط داخل برنامج كاشي للويندوز");
+      alert("الطباية الحرارية متاحة فقط داخل برنامج كاشي للويندوز");
       return;
     }
 
     try {
       const bCurrency = settings?.currency || "ر.س";
-      const bName = settings?.businessNameAr || "كاشي";
+      const bName = settings?.businessNameAr || "مطاعم دبل للوجبات السريعة";
       const html = `
-        <div class="receipt-print text-stone-800 p-4 font-mono text-xs text-right leading-relaxed" style="width: 280px; font-family: 'Cairo', 'JetBrains Mono', monospace;">
-          <div class="text-center border-b border-dashed border-stone-400 pb-2 mb-2">
-            <h2 class="font-bold text-sm">${bName}</h2>
-            <h3 class="font-bold text-xs mt-1 bg-stone-100 py-1">تقرير إغلاق الوردية (Z-Report)</h3>
-            <p class="text-[9px]">تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</p>
-          </div>
-          <div class="space-y-1.5 border-b border-dashed border-stone-400 pb-2 mb-2">
-            <p>رقم الوردية: #${shift.shiftNumber}</p>
-            <p>الكاشير المسؤول: ${shift.cashierName}</p>
-            <p>تاريخ الفتح: ${new Date(shift.openedAt).toLocaleString('ar-EG')}</p>
-          </div>
-          <div class="space-y-1 border-b border-dashed border-stone-400 pb-2 mb-2">
-            <div class="flex justify-between"><span>الرصيد الافتتاحي:</span><span>${shift.openingCash.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>إجمالي المبيعات:</span><span>${(report?.totalSales || 0).toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>المبيعات النقدية:</span><span>${(report?.cashSales || 0).toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>مبيعات الشبكة:</span><span>${(report?.cardSales || 0).toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>عدد الفواتير:</span><span>${report?.orderCount}</span></div>
-          </div>
-          <div class="space-y-1 border-b border-dashed border-stone-400 pb-2 mb-2 font-bold">
-            <div class="flex justify-between"><span>الكاش المتوقع بالدرج:</span><span>${expectedCashValue.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>الكاش الفعلي بالدرج:</span><span>${actualCashValue.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between ${differenceValue < 0 ? 'text-red-600' : differenceValue > 0 ? 'text-blue-600' : 'text-green-600'}">
-              <span>العجز / الزيادة:</span>
-              <span>${differenceValue.toFixed(2)} ${bCurrency}</span>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+            @page {
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 8px 12px;
+              font-family: 'Cairo', sans-serif;
+              background: white;
+              color: black;
+              direction: rtl;
+              text-align: right;
+            }
+            .report-container {
+              width: 100%;
+              max-width: 270px;
+              margin: 0 auto;
+              font-size: 11px;
+              line-height: 1.4;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .report-header {
+              border-bottom: 2px solid black;
+              padding-bottom: 6px;
+              margin-bottom: 8px;
+            }
+            .report-title {
+              font-size: 13px;
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .report-info-block {
+              border-bottom: 1px dashed black;
+              padding-bottom: 6px;
+              margin-bottom: 8px;
+              font-size: 10px;
+            }
+            .report-info-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 2px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-container">
+            <div class="report-header text-center">
+              <div class="report-title">${bName}</div>
+              <h3 style="margin: 4px 0; font-size: 12px; font-weight: bold; background: #eee; padding: 3px 0;">تقرير إغلاق الوردية (Z-Report)</h3>
+              <div style="font-size: 9px;">تاريخ الطباعة: ${new Date().toLocaleString('ar-SA')}</div>
+            </div>
+
+            <div class="report-info-block">
+              <div class="report-info-row"><span>رقم الوردية:</span><span>#${shift.shiftNumber}</span></div>
+              <div class="report-info-row"><span>الكاشير المسؤول:</span><span>${shift.cashierName}</span></div>
+              <div class="report-info-row"><span>تاريخ الافتتاح:</span><span>${new Date(shift.openedAt).toLocaleString('ar-SA')}</span></div>
+            </div>
+
+            <div class="report-info-block" style="border-bottom: 1px dashed black;">
+              <div class="report-info-row"><span>الرصيد الافتتاحي:</span><span>${shift.openingCash.toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row"><span>إجمالي المبيعات:</span><span>${(report?.totalSales || 0).toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row"><span>المبيعات النقدية (كاش):</span><span>${(report?.cashSales || 0).toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row"><span>مبيعات الشبكة (مدى/فيزا):</span><span>${(report?.cardSales || 0).toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row"><span>عدد الفواتير الكلي:</span><span>${report?.orderCount}</span></div>
+            </div>
+
+            <div class="report-info-block" style="border-bottom: none; font-weight: bold;">
+              <div class="report-info-row"><span>الكاش المتوقع بالدرج:</span><span>${expectedCashValue.toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row"><span>الكاش الفعلي بالدرج:</span><span>${actualCashValue.toFixed(2)} ${bCurrency}</span></div>
+              <div class="report-info-row" style="color: ${differenceValue < 0 ? 'red' : differenceValue > 0 ? 'blue' : 'green'}; border-top: 1px solid black; padding-top: 3px; margin-top: 3px;">
+                <span>العجز / الزيادة:</span>
+                <span>${differenceValue.toFixed(2)} ${bCurrency}</span>
+              </div>
+            </div>
+
+            ${notes ? `
+              <div style="font-size: 10px; background: #f9f9f9; padding: 6px; border: 1px solid #ccc; margin-top: 8px;">
+                <strong>الملاحظات:</strong>
+                <p style="margin: 3px 0 0 0;">${notes}</p>
+              </div>
+            ` : ''}
+
+            <div class="text-center" style="margin-top: 15px; border-top: 1px dashed black; padding-top: 5px; font-size: 9px; color: #666;">
+              نظام كاشي لإدارة نقاط البيع Cashi POS
             </div>
           </div>
-          ${notes ? `<div class="text-[10px] bg-stone-50 p-2 border border-stone-200 mt-2"><strong>الملاحظات:</strong><p>${notes}</p></div>` : ''}
-          <div class="text-center mt-4 text-[9px] text-stone-400">
-            <p>مشغّل بواسطة كاشي Cashi</p>
-          </div>
-        </div>
+        </body>
+        </html>
       `;
 
       await electronAPI.printReceipt({ html });

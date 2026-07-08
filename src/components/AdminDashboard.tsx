@@ -1,4 +1,41 @@
 import React, { useState, useEffect } from "react";
+import QRCode from "qrcode";
+
+function generateZatcaString(sellerName: string, vatNumber: string, dateStr: string, total: number, vatAmount: number): string {
+  const getTlv = (tag: number, val: string) => {
+    const encoder = new TextEncoder();
+    const valBuf = encoder.encode(val);
+    const tagBuf = new Uint8Array([tag]);
+    const lenBuf = new Uint8Array([valBuf.length]);
+    const combined = new Uint8Array(tagBuf.length + lenBuf.length + valBuf.length);
+    combined.set(tagBuf);
+    combined.set(lenBuf, tagBuf.length);
+    combined.set(valBuf, tagBuf.length + lenBuf.length);
+    return combined;
+  };
+
+  const tlv1 = getTlv(1, sellerName);
+  const tlv2 = getTlv(2, vatNumber);
+  const tlv3 = getTlv(3, dateStr);
+  const tlv4 = getTlv(4, total.toFixed(2));
+  const tlv5 = getTlv(5, vatAmount.toFixed(2));
+
+  const totalLength = tlv1.length + tlv2.length + tlv3.length + tlv4.length + tlv5.length;
+  const finalBuf = new Uint8Array(totalLength);
+  let offset = 0;
+  [tlv1, tlv2, tlv3, tlv4, tlv5].forEach(buf => {
+    finalBuf.set(buf, offset);
+    offset += buf.length;
+  });
+
+  let binary = '';
+  const len = finalBuf.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(finalBuf[i]);
+  }
+  return btoa(binary);
+}
+
 import {
   TrendingUp,
   BarChart2,
@@ -25,7 +62,8 @@ import {
   Printer,
   Clock,
   Globe,
-  Sliders
+  Sliders,
+  Store
 } from "lucide-react";
 import {
   BarChart,
@@ -50,7 +88,10 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"
 
 export default function AdminDashboard({ onBack, currentUser }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "menu" | "tables" | "staff" | "inventory" | "shifts" | "reports" | "settings" | "audit">("overview");
-  const [dateFilter, setDateFilter] = useState<"today" | "week" | "month">("month");
+  const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "custom">("month");
+  const [customFromDate, setCustomFromDate] = useState<string>("");
+  const [customToDate, setCustomToDate] = useState<string>("");
+  const [transactionType, setTransactionType] = useState<"all" | "cash" | "card" | "delivery">("all");
   
   // إعدادات المنشأة وتطبيق الويب
   const [settingsForm, setSettingsForm] = useState({
@@ -60,6 +101,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     address: "",
     phone: "",
     taxNumber: "",
+    commercialReg: "",
     currency: "ر.س",
     vatRate: 15,
     receiptFooter: "",
@@ -104,6 +146,22 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
 
+  // Inventory recipes states
+  const [recipes, setRecipes] = useState<any[]>([]);
+  const [inventorySubTab, setInventorySubTab] = useState<"items" | "recipes">("items");
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [editingInventory, setEditingInventory] = useState<any | null>(null);
+  const [inventoryForm, setInventoryForm] = useState({
+    nameAr: "",
+    unit: "كجم",
+    quantity: "",
+    lowStockThreshold: "",
+    reason: "تحديث المخزون"
+  });
+
+  const [selectedProductForRecipe, setSelectedProductForRecipe] = useState<any | null>(null);
+  const [recipeIngredients, setRecipeIngredients] = useState<Array<{ inventoryItemId: string, amount: string }>>([]);
+
   // CRUD state
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -128,17 +186,58 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
+  const fetchAnalytics = async () => {
+    try {
+      let url = `/api/reports/sales-summary?transactionType=${transactionType}`;
+      
+      let from = "";
+      let to = "";
+      
+      if (dateFilter === "today") {
+        const today = new Date().toISOString().split("T")[0];
+        from = today;
+        to = today;
+      } else if (dateFilter === "week") {
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(toDate.getDate() - 7);
+        from = fromDate.toISOString().split("T")[0];
+        to = toDate.toISOString().split("T")[0];
+      } else if (dateFilter === "month") {
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(toDate.getDate() - 30);
+        from = fromDate.toISOString().split("T")[0];
+        to = toDate.toISOString().split("T")[0];
+      } else if (dateFilter === "custom") {
+        if (customFromDate) from = customFromDate;
+        if (customToDate) to = customToDate;
+      }
+
+      if (from) url += `&from=${from}`;
+      if (to) url += `&to=${to}`;
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setAnalytics(data);
+      }
+    } catch (e) {
+      console.error("Error fetching overview analytics:", e);
+    }
+  };
+
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [resMenu, resTables, resShifts, resUsers, resInventory, resAnalytics, resAuditLogs] = await Promise.all([
+      const [resMenu, resTables, resShifts, resUsers, resInventory, resAuditLogs, resRecipes] = await Promise.all([
         fetch("/api/menu"),
         fetch("/api/tables"),
         fetch("/api/shifts"),
         fetch("/api/users"),
         fetch("/api/inventory"),
-        fetch("/api/reports/sales-summary"),
-        fetch("/api/audit-logs")
+        fetch("/api/audit-logs"),
+        fetch("/api/recipes")
       ]);
 
       if (resMenu.ok) {
@@ -158,10 +257,6 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
         const inv = await resInventory.json();
         setInventory(inv);
       }
-      if (resAnalytics.ok) {
-        const ana = await resAnalytics.json();
-        setAnalytics(ana);
-      }
       if (resUsers.ok) {
         const usrs = await resUsers.json();
         setUsers(usrs);
@@ -169,6 +264,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       if (resAuditLogs.ok) {
         const logs = await resAuditLogs.json();
         setAuditLogs(logs);
+      }
+      if (resRecipes.ok) {
+        const recs = await resRecipes.json();
+        setRecipes(recs);
       }
 
     } catch (e) {
@@ -260,6 +359,12 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   }, [activeTab]);
 
   useEffect(() => {
+    if (activeTab === "overview") {
+      fetchAnalytics();
+    }
+  }, [activeTab, dateFilter, customFromDate, customToDate, transactionType]);
+
+  useEffect(() => {
     if (activeTab === "reports") {
       handleFetchReport();
       fetchLatestOrders();
@@ -310,59 +415,206 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     try {
       const bCurrency = settingsForm.currency || "ر.س";
       const bFooter = settingsForm.receiptFooter || "شكراً لزيارتكم!";
-      const bName = settingsForm.businessNameAr || "كاشي";
-      const bNameEn = settingsForm.businessNameEn || "Cashi";
-      const bBranch = settingsForm.branchName || "";
-      const bAddress = settingsForm.address || "";
-      const bPhone = settingsForm.phone || "";
-      const bTax = settingsForm.taxNumber || "";
+      const bName = settingsForm.businessNameAr || "مطاعم دبل للوجبات السريعة";
+      const bNameEn = settingsForm.businessNameEn || "Double Fast Food Restaurants";
+      const bBranch = settingsForm.branchName || "الخرج";
+      const bTax = settingsForm.taxNumber || "311798679800003";
+      const bCR = (settingsForm as any).commercialReg || "1011153965";
+      const bAddress = settingsForm.address || "حي الورود، طريق ثمامة، الخرج";
+      const bPhone = settingsForm.phone || "0555107546";
+
+      // ZATCA QR Code generation
+      let qrCodeDataUrl = "";
+      try {
+        const zatcaString = generateZatcaString(bName, bTax, order.createdAt, order.total, order.taxAmount);
+        qrCodeDataUrl = await QRCode.toDataURL(zatcaString, { margin: 1, width: 120 });
+      } catch (err) {
+        console.error("Error generating ZATCA QR Code:", err);
+      }
 
       const html = `
-        <div class="receipt-print text-stone-800 p-4 font-mono text-xs text-right leading-relaxed" style="width: 280px; font-family: 'Cairo', 'JetBrains Mono', monospace;">
-          <div class="text-center border-b border-dashed border-stone-400 pb-2 mb-2">
-            ${settingsForm.logoBase64 ? `<img src="${settingsForm.logoBase64}" style="width:60px;height:60px;margin:0 auto 8px;object-fit:contain;" />` : ''}
-            <h2 class="font-bold text-sm">${bName}</h2>
-            ${bNameEn ? `<p class="text-[10px]">${bNameEn}</p>` : ''}
-            ${bBranch ? `<p class="text-[10px]">${bBranch}</p>` : ''}
-            ${bAddress ? `<p class="text-[10px]">${bAddress}</p>` : ''}
-            ${bPhone ? `<p class="text-[10px]">هاتف: ${bPhone}</p>` : ''}
-            ${bTax ? `<p class="text-[10px]">الرقم الضريبي: ${bTax}</p>` : ''}
-          </div>
-          <div class="space-y-0.5 border-b border-dashed border-stone-400 pb-2 mb-2">
-            <p class="font-bold">نسخة معادة - فاتورة رقم: #FT-${order.orderNumber}</p>
-            <p>التاريخ الأصلي: ${new Date(order.createdAt).toLocaleString('ar-EG')}</p>
-            <p>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</p>
-            <p>النوع: ${order.orderType === 'dine_in' ? 'داخلي' : order.orderType === 'takeaway' ? 'سفري' : 'توصيل'}</p>
-          </div>
-          <table class="w-full text-right mb-2">
-            <thead>
-              <tr class="border-b border-stone-300">
-                <th class="font-bold">الصنف</th>
-                <th class="font-bold text-center">الكمية</th>
-                <th class="font-bold text-left">المجموع</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${order.items.map((item: any) => `
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+            @page {
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 8px 12px;
+              font-family: 'Cairo', sans-serif;
+              background: white;
+              color: black;
+              direction: rtl;
+              text-align: right;
+            }
+            .receipt-container {
+              width: 100%;
+              max-width: 270px;
+              margin: 0 auto;
+              font-size: 11px;
+              line-height: 1.4;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .receipt-header {
+              border-bottom: 1px dashed black;
+              padding-bottom: 8px;
+              margin-bottom: 8px;
+            }
+            .receipt-logo {
+              width: 70px;
+              height: 70px;
+              object-fit: contain;
+              margin: 0 auto 6px;
+              display: block;
+            }
+            .receipt-title {
+              font-size: 13px;
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .receipt-subtitle {
+              font-size: 10px;
+              margin: 1px 0;
+              color: #444;
+            }
+            .receipt-info-block {
+              border-bottom: 1px dashed black;
+              padding-bottom: 6px;
+              margin-bottom: 8px;
+              font-size: 10px;
+            }
+            .receipt-info-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 1px 0;
+            }
+            .receipt-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 8px 0;
+            }
+            .receipt-table th {
+              border-bottom: 1px solid black;
+              font-weight: bold;
+              padding: 4px 0;
+              font-size: 10px;
+            }
+            .receipt-table td {
+              padding: 5px 0;
+              font-size: 11px;
+              vertical-align: middle;
+            }
+            .receipt-totals {
+              border-top: 1px dashed black;
+              padding-top: 6px;
+              margin-top: 6px;
+            }
+            .receipt-total-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 2px 0;
+            }
+            .receipt-grand-total {
+              font-size: 13px;
+              font-weight: bold;
+              border-top: 1px solid black;
+              border-bottom: 1px solid black;
+              padding: 5px 0;
+              margin-top: 4px;
+            }
+            .qr-container {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              margin: 10px 0;
+            }
+            .qr-code {
+              width: 110px;
+              height: 110px;
+              display: block;
+              margin: 0 auto;
+            }
+            .receipt-footer {
+              text-align: center;
+              font-size: 9px;
+              border-top: 1px dashed black;
+              padding-top: 8px;
+              margin-top: 8px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            <div class="receipt-header text-center">
+              ${settingsForm.logoBase64 ? `<img src="${settingsForm.logoBase64}" class="receipt-logo" />` : ''}
+              <div class="receipt-title">${bName}</div>
+              <div class="receipt-subtitle">${bNameEn}</div>
+              ${bBranch ? `<div class="receipt-subtitle">فرع: ${bBranch}</div>` : ''}
+              ${bAddress ? `<div class="receipt-subtitle">${bAddress}</div>` : ''}
+              ${bPhone ? `<div class="receipt-subtitle">هاتف: ${bPhone}</div>` : ''}
+              ${bTax ? `<div class="receipt-subtitle">الرقم الضريبي: ${bTax}</div>` : ''}
+              ${bCR ? `<div class="receipt-subtitle">رقم السجل التجاري: ${bCR}</div>` : ''}
+            </div>
+
+            <div class="receipt-info-block">
+              <div class="receipt-info-row" style="font-weight: bold;"><span>نسخة معادة من الفاتورة</span><span></span></div>
+              <div class="receipt-info-row"><span>رقم الفاتورة:</span><span>#FT-${order.orderNumber}</span></div>
+              <div class="receipt-info-row"><span>تاريخ الفاتورة:</span><span>${new Date(order.createdAt).toLocaleString('ar-SA')}</span></div>
+              <div class="receipt-info-row"><span>تاريخ إعادة الطباعة:</span><span>${new Date().toLocaleString('ar-SA')}</span></div>
+              <div class="receipt-info-row"><span>نوع الطلب:</span><span>${
+                order.orderType === 'dine_in' 
+                  ? 'داخلي' 
+                  : order.orderType === 'takeaway' 
+                  ? 'سفري / تطبيقات' 
+                  : 'توصيل للمنزل'
+              }</span></div>
+            </div>
+
+            <table class="receipt-table">
+              <thead>
                 <tr>
-                  <td>${item.productNameSnapshot}</td>
-                  <td class="text-center">${item.quantity}</td>
-                  <td class="text-left">${item.lineTotal.toFixed(2)}</td>
+                  <th style="text-align: right; width: 50%;">الصنف</th>
+                  <th style="text-align: center; width: 20%;">الكمية</th>
+                  <th style="text-align: left; width: 30%;">المجموع</th>
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="border-t border-dashed border-stone-400 pt-2 space-y-0.5">
-            <div class="flex justify-between"><span>الإجمالي الفرعي:</span><span>${order.subtotal.toFixed(2)} ${bCurrency}</span></div>
-            ${order.discountAmount > 0 ? `<div class="flex justify-between text-red-600"><span>الخصم:</span><span>-${order.discountAmount.toFixed(2)} ${bCurrency}</span></div>` : ''}
-            <div class="flex justify-between"><span>الضريبة:</span><span>${order.taxAmount.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between font-bold text-sm border-t border-stone-300 pt-1"><span>الإجمالي الكلي:</span><span>${order.total.toFixed(2)} ${bCurrency}</span></div>
+              </thead>
+              <tbody>
+                ${order.items.map((item: any) => `
+                  <tr>
+                    <td style="text-align: right;">${item.productNameSnapshot}</td>
+                    <td style="text-align: center;">${item.quantity}</td>
+                    <td style="text-align: left;">${item.lineTotal.toFixed(2)} ${bCurrency}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <div class="receipt-totals">
+              <div class="receipt-total-row"><span>الإجمالي الفرعي:</span><span>${order.subtotal.toFixed(2)} ${bCurrency}</span></div>
+              ${order.discountAmount > 0 ? `<div class="receipt-total-row" style="color: red;"><span>الخصم:</span><span>-${order.discountAmount.toFixed(2)} ${bCurrency}</span></div>` : ''}
+              ${order.taxAmount > 0 ? `<div class="receipt-total-row"><span>ضريبة القيمة المضافة:</span><span>${order.taxAmount.toFixed(2)} ${bCurrency}</span></div>` : ''}
+              <div class="receipt-total-row receipt-grand-total"><span>الإجمالي الكلي (شامل الضريبة):</span><span>${order.total.toFixed(2)} ${bCurrency}</span></div>
+            </div>
+
+            ${qrCodeDataUrl ? `
+              <div class="qr-container">
+                <img src="${qrCodeDataUrl}" class="qr-code" />
+              </div>
+            ` : ''}
+
+            <div class="receipt-footer">
+              <p>${bFooter}</p>
+              <p style="margin-top: 4px; font-weight: bold;">فاتورة مبسطة خاضعة للمواصفات الضريبية</p>
+              <p>نظام كاشي لإدارة نقاط البيع Cashi POS</p>
+            </div>
           </div>
-          <div class="text-center mt-4 border-t border-dashed border-stone-400 pt-2 text-[10px]">
-            <p>${bFooter}</p>
-            <p class="mt-1">مشغّل بواسطة كاشي Cashi</p>
-          </div>
-        </div>
+        </body>
+        </html>
       `;
 
       await electronAPI.printReceipt({ html });
@@ -398,7 +650,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       }
 
       const html = `
-        <div class="receipt-print text-stone-800 p-4 font-mono text-xs text-right leading-relaxed" style="width: 280px; font-family: 'Cairo', 'JetBrains Mono', monospace;">
+        <div dir="rtl" class="receipt-print text-stone-800 p-4 font-mono text-xs text-right leading-relaxed" style="width: 280px; font-family: 'Cairo', 'JetBrains Mono', monospace;">
           <div class="text-center border-b border-dashed border-stone-400 pb-2 mb-2">
             <h2 class="font-bold text-sm">${bName}</h2>
             <h3 class="font-bold text-xs mt-1 bg-stone-100 py-1">${reportTitle}</h3>
@@ -517,6 +769,104 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     }
   };
 
+  const handleSaveInventoryItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inventoryForm.nameAr || inventoryForm.quantity === "" || inventoryForm.lowStockThreshold === "") {
+      alert("الرجاء تعبئة كافة الحقول الأساسية");
+      return;
+    }
+
+    const payload = {
+      nameAr: inventoryForm.nameAr,
+      unit: inventoryForm.unit,
+      quantity: Number(inventoryForm.quantity),
+      lowStockThreshold: Number(inventoryForm.lowStockThreshold),
+      reason: inventoryForm.reason
+    };
+
+    try {
+      let res;
+      if (editingInventory) {
+        res = await fetch(`/api/inventory/${editingInventory.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch("/api/inventory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        setShowInventoryModal(false);
+        setEditingInventory(null);
+        setInventoryForm({
+          nameAr: "",
+          unit: "كجم",
+          quantity: "",
+          lowStockThreshold: "",
+          reason: "تحديث المخزون"
+        });
+        fetchAllData();
+      } else {
+        alert("فشل حفظ المادة الخام في المستودع");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteInventoryItem = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذه المادة الخام من المستودع؟ سيؤدي ذلك أيضاً لإلغائها من وصفات المنتجات المرتبطة بها.")) return;
+    try {
+      const res = await fetch(`/api/inventory/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchAllData();
+      } else {
+        alert("فشل حذف المادة الخام");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveRecipe = async () => {
+    if (!selectedProductForRecipe) return;
+    
+    // تصفية السطور الفارغة
+    const ingredients = recipeIngredients
+      .filter(ing => ing.inventoryItemId && ing.amount && Number(ing.amount) > 0)
+      .map(ing => ({
+        inventoryItemId: ing.inventoryItemId,
+        amount: Number(ing.amount)
+      }));
+
+    try {
+      const res = await fetch("/api/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: selectedProductForRecipe.id,
+          ingredients
+        })
+      });
+
+      if (res.ok) {
+        setSelectedProductForRecipe(null);
+        setRecipeIngredients([]);
+        fetchAllData();
+        alert("تم حفظ وصفة استهلاك المنتج بنجاح! 💾");
+      } else {
+        alert("فشل حفظ وصفة المنتج");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryNameAr || !newCategoryNameEn) {
@@ -563,21 +913,101 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     }
   };
 
-  const handleExportCSV = () => {
-    // Generate a simple CSV spreadsheet simulated download
-    const rows = [
-      ["رقم المرجع", "التاريخ والوقت", "الكاشير", "نوع الطلب", "الإجمالي"],
-      ...(analytics?.chartData || []).map((c: any, i: number) => [`#ORD-${1000 + i}`, c.date, "أحمد كاشير", "داخلي / صالة", `${c.sales} ر.س`])
-    ];
+  const handleExportCSV = async () => {
+    try {
+      const res = await fetch("/api/orders");
+      if (!res.ok) {
+        alert("فشل جلب بيانات الفواتير للتصدير");
+        return;
+      }
+      
+      const allOrders = await res.json();
+      
+      // 1. تصفية الفواتير المكتملة فقط
+      let filtered = allOrders.filter((o: any) => o.status === "completed");
+      
+      // 2. تصفية نطاق التاريخ
+      let fromDate: Date | null = null;
+      let toDate: Date | null = null;
+      
+      if (dateFilter === "today") {
+        fromDate = new Date();
+        fromDate.setHours(0, 0, 0, 0);
+        toDate = new Date();
+        toDate.setHours(23, 59, 59, 999);
+      } else if (dateFilter === "week") {
+        toDate = new Date();
+        toDate.setHours(23, 59, 59, 999);
+        fromDate = new Date();
+        fromDate.setDate(toDate.getDate() - 7);
+        fromDate.setHours(0, 0, 0, 0);
+      } else if (dateFilter === "month") {
+        toDate = new Date();
+        toDate.setHours(23, 59, 59, 999);
+        fromDate = new Date();
+        fromDate.setDate(toDate.getDate() - 30);
+        fromDate.setHours(0, 0, 0, 0);
+      } else if (dateFilter === "custom") {
+        if (customFromDate) {
+          fromDate = new Date(customFromDate);
+          fromDate.setHours(0, 0, 0, 0);
+        }
+        if (customToDate) {
+          toDate = new Date(customToDate);
+          toDate.setHours(23, 59, 59, 999);
+        }
+      }
+      
+      if (fromDate || toDate) {
+        filtered = filtered.filter((o: any) => {
+          const d = new Date(o.createdAt);
+          if (fromDate && d < fromDate) return false;
+          if (toDate && d > toDate) return false;
+          return true;
+        });
+      }
+      
+      // 3. تصفية نوع المعاملة
+      if (transactionType && transactionType !== "all") {
+        filtered = filtered.filter((o: any) => {
+          if (transactionType === "cash") {
+            return (o.payments || []).some((p: any) => p.method === "cash");
+          }
+          if (transactionType === "card") {
+            return (o.payments || []).some((p: any) => p.method === "card");
+          }
+          if (transactionType === "delivery") {
+            return o.orderType === "takeaway";
+          }
+          return true;
+        });
+      }
+      
+      // 4. إنشاء صفوف ملف الـ CSV
+      const rows = [
+        ["رقم الفاتورة", "التاريخ والوقت", "نوع الطلب", "طريقة الدفع", "الإجمالي"],
+        ...filtered.map((o: any) => [
+          o.orderNumber || o.id,
+          new Date(o.createdAt).toLocaleString("ar-EG"),
+          o.orderType === "delivery" ? "توصيل سفري" : o.orderType === "takeaway" ? "تطبيقات" : "داخلي صالة",
+          (o.payments || []).map((p: any) => p.method === "cash" ? "نقدي" : p.method === "card" ? "شبكة" : p.method).join(" + ") || "غير محدد",
+          `${o.total} ر.س`
+        ])
+      ];
 
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `تقارير_المبيعات_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // تحويل المحتوى إلى تنسيق CSV مع ترميز UTF-8 لدعم اللغة العربية
+      let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.map(val => `"${val}"`).join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `تقرير_مبيعات_${transactionType}_${dateFilter}_${new Date().toISOString().split("T")[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error(e);
+      alert("حدث خطأ أثناء تصدير ملف الاكسيل");
+    }
   };
 
   const filteredProducts = products.filter(p =>
@@ -710,42 +1140,124 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           {activeTab === "overview" && (
             <div className="space-y-6">
               
-              {/* Filter bar and download */}
-              <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white border border-stone-200 rounded-xl p-4">
-                <button
-                  onClick={handleExportCSV}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-2 transition-all"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>تصدير التقارير كملف Excel / CSV</span>
-                </button>
+              {/* Filter controls panel */}
+              <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4 text-right">
+                <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
+                  
+                  {/* Left part: Title & Filter selectors */}
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center w-full lg:w-auto">
+                    {/* Period selection */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-stone-400">الفترة الزمنية</label>
+                      <div className="flex bg-stone-100 p-1 rounded-xl">
+                        <button
+                          onClick={() => setDateFilter("custom")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            dateFilter === "custom" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          تاريخ مخصص
+                        </button>
+                        <button
+                          onClick={() => setDateFilter("month")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            dateFilter === "month" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          أخر 30 يوم
+                        </button>
+                        <button
+                          onClick={() => setDateFilter("week")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            dateFilter === "week" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          أخر 7 أيام
+                        </button>
+                        <button
+                          onClick={() => setDateFilter("today")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            dateFilter === "today" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          اليوم
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="flex bg-stone-100 p-1 rounded-lg w-full sm:w-auto">
+                    {/* Payment/Transaction Method selection */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-stone-400">طريقة الدفع / المعاملة</label>
+                      <div className="flex bg-stone-100 p-1 rounded-xl">
+                        <button
+                          onClick={() => setTransactionType("delivery")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            transactionType === "delivery" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          تطبيقات فقط
+                        </button>
+                        <button
+                          onClick={() => setTransactionType("card")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            transactionType === "card" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          شبكة فقط
+                        </button>
+                        <button
+                          onClick={() => setTransactionType("cash")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            transactionType === "cash" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          كاش فقط
+                        </button>
+                        <button
+                          onClick={() => setTransactionType("all")}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            transactionType === "all" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
+                          }`}
+                        >
+                          الكل
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right part: CSV export */}
                   <button
-                    onClick={() => setDateFilter("month")}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      dateFilter === "month" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
-                    }`}
+                    onClick={handleExportCSV}
+                    className="w-full lg:w-auto px-4 py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-2 transition-all self-end lg:self-center"
                   >
-                    أخر 30 يوم
-                  </button>
-                  <button
-                    onClick={() => setDateFilter("week")}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      dateFilter === "week" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
-                    }`}
-                  >
-                    أخر 7 أيام
-                  </button>
-                  <button
-                    onClick={() => setDateFilter("today")}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      dateFilter === "today" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-600"
-                    }`}
-                  >
-                    اليوم
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>تصدير التقارير كملف Excel / CSV</span>
                   </button>
                 </div>
+
+                {/* Custom date range picker section */}
+                {dateFilter === "custom" && (
+                  <div className="flex flex-row-reverse flex-wrap gap-4 items-center bg-stone-50 border border-stone-200 rounded-xl p-4">
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-stone-400">من تاريخ</label>
+                      <input
+                        type="date"
+                        value={customFromDate}
+                        onChange={(e) => setCustomFromDate(e.target.value)}
+                        className="px-3 py-1.5 text-xs border border-stone-200 rounded-lg outline-none focus:border-[#2E7D32] focus:ring-1 focus:ring-[#2E7D32]/25 font-bold font-mono text-stone-700 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-stone-400">إلى تاريخ</label>
+                      <input
+                        type="date"
+                        value={customToDate}
+                        onChange={(e) => setCustomToDate(e.target.value)}
+                        className="px-3 py-1.5 text-xs border border-stone-200 rounded-lg outline-none focus:border-[#2E7D32] focus:ring-1 focus:ring-[#2E7D32]/25 font-bold font-mono text-stone-700 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Stat Cards */}
@@ -1066,57 +1578,195 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           {activeTab === "inventory" && (
             <div className="space-y-6">
               
-              {/* Low inventory alert zones */}
-              <div className="bg-amber-50 border-r-4 border-amber-500 rounded-xl p-4 text-amber-900 text-xs text-right space-y-2">
-                <p className="font-bold flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>تنبيه: أصناف شارفت على النفاد في المستودعات (نقص عن الحد الأدنى)</span>
-                </p>
-                <p className="text-amber-700">
-                  يوجد بعض مستلزمات المطبخ والمخزن التي انخفضت كميتها الفعالة عن حد الأمان الموصى به. يرجى مراجعة توريد بضائع جديدة.
-                </p>
+              {/* Sub-tabs selector */}
+              <div className="flex bg-stone-100 p-1.5 rounded-2xl gap-2 w-fit select-none font-bold text-xs">
+                <button
+                  onClick={() => setInventorySubTab("items")}
+                  className={`px-4 py-2 rounded-xl transition-all ${
+                    inventorySubTab === "items" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-500 hover:bg-stone-50"
+                  }`}
+                >
+                  المستودع والمواد الخام
+                </button>
+                <button
+                  onClick={() => setInventorySubTab("recipes")}
+                  className={`px-4 py-2 rounded-xl transition-all ${
+                    inventorySubTab === "recipes" ? "bg-white text-[#2E7D32] shadow-sm" : "text-stone-500 hover:bg-stone-50"
+                  }`}
+                >
+                  وصفات استهلاك المنتجات (المكونات)
+                </button>
               </div>
 
-              {/* Inventory table */}
-              <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
-                    <tr>
-                      <th className="p-4">اسم المادة الخام</th>
-                      <th className="p-4">الوحدة الاساسية</th>
-                      <th className="p-4 text-center">الكمية المتوفرة حالياً</th>
-                      <th className="p-4 text-center">حد النقص والأمان</th>
-                      <th className="p-4 text-center">الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 font-medium">
-                    {inventory.map((item) => {
-                      const isLow = item.quantity <= item.lowStockThreshold;
-                      return (
-                        <tr key={item.id} className="hover:bg-stone-50/50">
-                          <td className="p-4 font-bold text-stone-800">{item.nameAr}</td>
-                          <td className="p-4 text-stone-500">{item.unit}</td>
-                          <td className={`p-4 text-center font-mono font-bold ${isLow ? "text-red-600" : "text-stone-700"}`}>
-                            {item.quantity} {item.unit}
-                          </td>
-                          <td className="p-4 text-center font-mono text-stone-500">{item.lowStockThreshold} {item.unit}</td>
-                          <td className="p-4 text-center">
-                            {isLow ? (
-                              <span className="bg-red-50 text-red-600 border border-red-100 px-2.5 py-1 rounded-full text-[10px] font-bold">
-                                عجز / تزويد مطلوب ⚠️
-                              </span>
-                            ) : (
-                              <span className="bg-green-50 text-green-700 border border-green-100 px-2.5 py-1 rounded-full text-[10px] font-bold">
-                                سليم / آمن ✅
-                              </span>
-                            )}
-                          </td>
+              {inventorySubTab === "items" && (
+                <div className="space-y-6 animate-in fade-in-50 duration-150">
+                  {/* Low inventory alert zones */}
+                  {inventory.some(item => item.quantity <= item.lowStockThreshold) && (
+                    <div className="bg-amber-50 border-r-4 border-amber-500 rounded-xl p-4 text-amber-900 text-xs text-right space-y-2">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>تنبيه: أصناف شارفت على النفاد في المستودعات (نقص عن الحد الأدنى)</span>
+                      </p>
+                      <p className="text-amber-700">
+                        يوجد بعض مستلزمات المطبخ والمخزن التي انخفضت كميتها الفعالة عن حد الأمان الموصى به. يرجى مراجعة توريد بضائع جديدة.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="p-5 border-b border-stone-100 flex items-center justify-between flex-row-reverse">
+                      <button
+                        onClick={() => {
+                          setEditingInventory(null);
+                          setInventoryForm({
+                            nameAr: "",
+                            unit: "كجم",
+                            quantity: "",
+                            lowStockThreshold: "",
+                            reason: "تهيئة الرصيد الافتتاحي"
+                          });
+                          setShowInventoryModal(true);
+                        }}
+                        className="px-4 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>إضافة مادة خام جديدة</span>
+                      </button>
+                      <h3 className="font-bold text-stone-800 text-right">المواد الخام ومستلزمات المستودع</h3>
+                    </div>
+
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
+                        <tr>
+                          <th className="p-4">اسم المادة الخام</th>
+                          <th className="p-4 text-center">الوحدة الاساسية</th>
+                          <th className="p-4 text-center">الكمية المتوفرة حالياً</th>
+                          <th className="p-4 text-center">حد النقص والأمان</th>
+                          <th className="p-4 text-center">الحالة</th>
+                          <th className="p-4 text-center">الإجراءات</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-medium">
+                        {inventory.map((item) => {
+                          const isLow = item.quantity <= item.lowStockThreshold;
+                          return (
+                            <tr key={item.id} className="hover:bg-stone-50/50">
+                              <td className="p-4 font-bold text-stone-800">{item.nameAr}</td>
+                              <td className="p-4 text-center text-stone-500">{item.unit}</td>
+                              <td className={`p-4 text-center font-mono font-bold ${isLow ? "text-red-600" : "text-stone-700"}`}>
+                                {item.quantity} {item.unit}
+                              </td>
+                              <td className="p-4 text-center font-mono text-stone-500">{item.lowStockThreshold} {item.unit}</td>
+                              <td className="p-4 text-center">
+                                {isLow ? (
+                                  <span className="bg-red-50 text-red-600 border border-red-100 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                    عجز / تزويد مطلوب ⚠️
+                                  </span>
+                                ) : (
+                                  <span className="bg-green-50 text-green-700 border border-green-100 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                    سليم / آمن ✅
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-4 text-center flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingInventory(item);
+                                    setInventoryForm({
+                                      nameAr: item.nameAr,
+                                      unit: item.unit,
+                                      quantity: String(item.quantity),
+                                      lowStockThreshold: String(item.lowStockThreshold),
+                                      reason: "تعديل يدوي للمخزون"
+                                    });
+                                    setShowInventoryModal(true);
+                                  }}
+                                  className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                  title="تعديل"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteInventoryItem(item.id)}
+                                  className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                  title="حذف"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {inventorySubTab === "recipes" && (
+                <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm animate-in fade-in-50 duration-150">
+                  <div className="p-5 border-b border-stone-100">
+                    <h3 className="font-bold text-stone-800 text-right">وصفات ومعدلات استهلاك المنتجات من المستودع</h3>
+                  </div>
+
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
+                      <tr>
+                        <th className="p-4">اسم المنتج بالمنيو</th>
+                        <th className="p-4">التصنيف</th>
+                        <th className="p-4 text-center">سعر البيع</th>
+                        <th className="p-4 text-center">حالة الوصفة ومكونات الاستهلاك</th>
+                        <th className="p-4 text-center">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 font-medium">
+                      {products.map((product) => {
+                        const recipe = recipes.find(r => r.productId === product.id);
+                        const hasRecipe = recipe && recipe.ingredients && recipe.ingredients.length > 0;
+                        const category = categories.find(c => c.id === product.categoryId);
+                        return (
+                          <tr key={product.id} className="hover:bg-stone-50/50">
+                            <td className="p-4 font-bold text-stone-800">{product.nameAr}</td>
+                            <td className="p-4 text-stone-500">{category?.nameAr || "غير مصنف"}</td>
+                            <td className="p-4 text-center font-mono text-stone-700">{product.price.toFixed(2)} ر.س</td>
+                            <td className="p-4 text-center">
+                              {hasRecipe ? (
+                                <span className="bg-green-50 text-green-700 border border-green-100 px-3 py-1 rounded-full text-[10px] font-bold">
+                                  وصفة مفعّلة ({recipe.ingredients.length} مكونات) 🥗
+                                </span>
+                              ) : (
+                                <span className="bg-stone-50 text-stone-400 border border-stone-200 px-3 py-1 rounded-full text-[10px] font-bold">
+                                  تتبع مباشر (لا توجد وصفة) ⚙️
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedProductForRecipe(product);
+                                  if (hasRecipe) {
+                                    setRecipeIngredients(
+                                      recipe.ingredients.map((ing: any) => ({
+                                        inventoryItemId: ing.inventoryItemId,
+                                        amount: String(ing.amount)
+                                      }))
+                                    );
+                                  } else {
+                                    setRecipeIngredients([{ inventoryItemId: "", amount: "" }]);
+                                  }
+                                }}
+                                className="px-3 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[10px] font-bold transition-all"
+                              >
+                                تعديل الوصفة والمكونات 🛠️
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
             </div>
           )}
@@ -1469,7 +2119,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                       type="text"
                       value={settingsForm.branchName}
                       onChange={(e) => setSettingsForm({ ...settingsForm, branchName: e.target.value })}
-                      placeholder="مثال: الفرع الرئيسي - الرياض"
+                      placeholder="مثال: الفرع الرئيسي - الخرج"
                       className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
                     />
                   </div>
@@ -1491,6 +2141,17 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                       value={settingsForm.taxNumber}
                       onChange={(e) => setSettingsForm({ ...settingsForm, taxNumber: e.target.value })}
                       placeholder="الرقم الضريبي للمنشأة..."
+                      dir="ltr"
+                      className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">رقم السجل التجاري CR</label>
+                    <input
+                      type="text"
+                      value={(settingsForm as any).commercialReg || ""}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, commercialReg: e.target.value })}
+                      placeholder="مثال: 1011153965"
                       dir="ltr"
                       className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
                     />
@@ -2021,6 +2682,212 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Item Modal */}
+      {showInventoryModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden text-right">
+            <div className="bg-[#2E7D32] text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-bold">
+                {editingInventory ? "تعديل المادة الخام" : "إضافة مادة خام للمستودع"}
+              </span>
+              <h3 className="text-lg font-bold">{editingInventory ? "تعديل المادة الخام" : "مادة خام جديدة"}</h3>
+              <button onClick={() => setShowInventoryModal(false)} className="p-1 hover:bg-white/15 rounded text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveInventoryItem} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">اسم المادة الخام *</label>
+                <input
+                  type="text"
+                  required
+                  value={inventoryForm.nameAr}
+                  onChange={(e) => setInventoryForm({ ...inventoryForm, nameAr: e.target.value })}
+                  placeholder="مثال: دجاج شاورما متبل، طحين فاخر..."
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">الوحدة الأساسية *</label>
+                  <select
+                    value={inventoryForm.unit}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, unit: e.target.value })}
+                    className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
+                  >
+                    <option value="كجم">كيلوجرام (كجم)</option>
+                    <option value="لتر">لتر (لتر)</option>
+                    <option value="حبة">حبة (حبة)</option>
+                    <option value="كرتون">كرتون (كرتون)</option>
+                    <option value="كيس">كيس (كيس)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">الكمية الحالية *</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    required
+                    value={inventoryForm.quantity}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, quantity: e.target.value })}
+                    placeholder="مثال: 50.5"
+                    className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-left focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">حد النقص والأمان (التنبيه) *</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  required
+                  value={inventoryForm.lowStockThreshold}
+                  onChange={(e) => setInventoryForm({ ...inventoryForm, lowStockThreshold: e.target.value })}
+                  placeholder="مثال: 10"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-left focus:outline-none"
+                />
+              </div>
+
+              {editingInventory && (
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">سبب تعديل الكمية / الرصيد</label>
+                  <input
+                    type="text"
+                    value={inventoryForm.reason}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, reason: e.target.value })}
+                    placeholder="مثال: جرد أسبوعي، إتلاف، بضاعة جديدة..."
+                    className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end border-t border-stone-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowInventoryModal(false)}
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 text-xs font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow"
+                >
+                  حفظ المادة
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Modal (Edit Ingredients) */}
+      {selectedProductForRecipe && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden text-right">
+            <div className="bg-[#2E7D32] text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-bold">
+                تعديل وصفة استهلاك المستودع
+              </span>
+              <h3 className="text-lg font-bold">مكونات منتج: {selectedProductForRecipe.nameAr}</h3>
+              <button onClick={() => setSelectedProductForRecipe(null)} className="p-1 hover:bg-white/15 rounded text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-stone-50 rounded-xl p-3 border border-stone-100 text-stone-600 text-xs leading-relaxed">
+                <p className="font-bold text-[#2E7D32] mb-1">💡 فكرة عمل الوصفة والمكونات:</p>
+                قم بإضافة المواد الخام التي يستهلكها هذا الصنف عند بيعه وتحديد الكمية المستهلكة من كل مادة (بالكيلو، اللتر، إلخ).
+                عند اكتمال أي عملية بيع لهذا المنتج من الكاشير، سيقوم النظام تلقائياً بخصم هذه المقادير من المستودع.
+              </div>
+
+              <div className="max-h-[300px] overflow-y-auto space-y-3">
+                {recipeIngredients.map((item, index) => (
+                  <div key={index} className="flex gap-3 items-center justify-between flex-row-reverse">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-500 mb-0.5">المادة الخام من المستودع</label>
+                      <select
+                        value={item.inventoryItemId}
+                        onChange={(e) => {
+                          const updated = [...recipeIngredients];
+                          updated[index].inventoryItemId = e.target.value;
+                          setRecipeIngredients(updated);
+                        }}
+                        className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2 text-xs text-right focus:outline-none"
+                      >
+                        <option value="">-- اختر مادة خام من المستودع --</option>
+                        {inventory.map(inv => (
+                          <option key={inv.id} value={inv.id}>{inv.nameAr} ({inv.unit})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="w-1/3">
+                      <label className="block text-[10px] font-bold text-stone-500 mb-0.5">الكمية المستهلكة لكل حبة مباعة</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        placeholder="مثال: 0.150"
+                        value={item.amount}
+                        onChange={(e) => {
+                          const updated = [...recipeIngredients];
+                          updated[index].amount = e.target.value;
+                          setRecipeIngredients(updated);
+                        }}
+                        className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2 text-xs text-left focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-4">
+                      <button
+                        onClick={() => {
+                          const updated = recipeIngredients.filter((_, i) => i !== index);
+                          setRecipeIngredients(updated.length > 0 ? updated : [{ inventoryItemId: "", amount: "" }]);
+                        }}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="حذف المكون"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <button
+                  onClick={() => setRecipeIngredients([...recipeIngredients, { inventoryItemId: "", amount: "" }])}
+                  className="px-3 py-1.5 border border-dashed border-stone-300 hover:border-[#2E7D32] hover:text-[#2E7D32] text-stone-500 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة مكون استهلاك</span>
+                </button>
+              </div>
+
+              <div className="flex gap-2 justify-end border-t border-stone-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductForRecipe(null)}
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 text-xs font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleSaveRecipe}
+                  className="px-6 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow"
+                >
+                  حفظ وصفة الاستهلاك
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

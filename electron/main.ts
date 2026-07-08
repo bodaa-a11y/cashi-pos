@@ -60,7 +60,7 @@ if (!gotTheLock) {
 } else {
   // عند محاولة فتح نسخة ثانية، أظهر النافذة الحالية
   app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
@@ -263,7 +263,7 @@ function createSystemTray(): Tray {
     {
       label: 'إظهار / إخفاء النافذة',
       click: () => {
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
           if (mainWindow.isVisible()) {
             mainWindow.hide();
           } else {
@@ -295,7 +295,7 @@ function createSystemTray(): Tray {
 
   // النقر المزدوج على أيقونة شريط النظام يُظهر/يُخفي النافذة
   systemTray.on('double-click', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isVisible()) {
         mainWindow.hide();
       } else {
@@ -323,7 +323,7 @@ function registerIPCHandlers(): void {
   ipcMain.handle('print-receipt', async (_event, data) => {
     try {
       if (data && data.html) {
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
           const result = await printerManager.fallbackPrint(data.html, mainWindow);
           return { success: result };
         }
@@ -478,23 +478,14 @@ app.on('before-quit', () => {
   (app as any).isQuitting = true;
 });
 
-app.on('will-quit', (event) => {
+app.on('will-quit', () => {
   if (httpServer) {
-    event.preventDefault();
-    console.log('[كاشي] 🔄 جاري إغلاق السيرفر...');
-
-    httpServer.close(() => {
-      console.log('[كاشي] ✅ تم إغلاق السيرفر بنجاح');
-      httpServer = null;
-      app.quit();
-    });
-
-    // مهلة أمان — إذا لم يُغلق السيرفر خلال 5 ثوانٍ، أغلق بالقوة
-    setTimeout(() => {
-      console.warn('[كاشي] ⚠️ مهلة إغلاق السيرفر انتهت — إغلاق قسري');
-      httpServer = null;
-      app.quit();
-    }, 5000);
+    try {
+      console.log('[كاشي] 🔄 جاري إغلاق السيرفر...');
+      httpServer.close();
+    } catch (e) {
+      console.error(e);
+    }
   }
 });
 
@@ -508,7 +499,7 @@ app.on('window-all-closed', () => {
 
 // على macOS، عند إعادة تنشيط التطبيق
 app.on('activate', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
   }

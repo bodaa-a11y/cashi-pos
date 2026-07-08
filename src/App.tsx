@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from "react";
 import SplashScreen from "./components/SplashScreen";
 import PinLogin from "./components/PinLogin";
 import OpenShift from "./components/OpenShift";
@@ -12,7 +12,71 @@ import SetupWizard from "./components/SetupWizard";
 import { User, Shift, HeldOrder, Order } from "./types";
 import { Wifi, WifiOff, AlertTriangle, RefreshCw, Layers, Database } from "lucide-react";
 
-export default function App() {
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an uncaught error:", error, errorInfo);
+    fetch("/api/logs/error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack
+      })
+    }).catch(err => console.error("Failed to send error to logger:", err));
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-stone-100 flex flex-col items-center justify-center p-6 text-center select-none" style={{ fontFamily: "Cairo, sans-serif" }}>
+          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-stone-200">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+            </div>
+            <h1 className="text-xl font-bold text-stone-900 mb-2">حدث خطأ غير متوقع في الواجهة</h1>
+            <p className="text-sm text-stone-500 mb-6 leading-relaxed font-semibold">
+              لقد واجه البرنامج مشكلة تقنية مفاجئة. يرجى محاولة إعادة تحميل البرنامج أو التواصل مع الدعم الفني.
+            </p>
+            <div className="bg-stone-50 p-3 rounded-lg text-left text-xs font-mono text-stone-600 overflow-auto max-h-32 mb-6 border border-stone-200">
+              {this.state.error?.message || "Unknown error"}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white py-3 rounded-xl font-bold transition-all shadow-md shadow-green-700/20"
+            >
+              إعادة تحميل البرنامج 🔄
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function CashiApp() {
   // Navigation states
   const [activeScreen, setActiveScreen] = useState<"splash" | "setup" | "login" | "open_shift" | "sales" | "admin">("splash");
   
@@ -365,5 +429,13 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <CashiApp />
+    </ErrorBoundary>
   );
 }
