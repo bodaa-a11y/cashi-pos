@@ -76,7 +76,8 @@ import {
   Clock,
   Globe,
   Sliders,
-  Store
+  Store,
+  ShoppingBag
 } from "lucide-react";
 import {
   BarChart,
@@ -91,6 +92,7 @@ import {
   Cell
 } from "recharts";
 import { Category, Product, RestaurantTable, User, Shift } from "../types";
+import PurchasingTab from "./admin/PurchasingTab";
 
 interface AdminDashboardProps {
   onBack: () => void;
@@ -100,7 +102,8 @@ interface AdminDashboardProps {
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"];
 
 export default function AdminDashboard({ onBack, currentUser }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "menu" | "tables" | "staff" | "inventory" | "shifts" | "reports" | "settings" | "audit">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "menu" | "tables" | "staff" | "inventory" | "shifts" | "reports" | "settings" | "audit" | "purchasing">("overview");
+  const [purchaseRequestItemId, setPurchaseRequestItemId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "custom">("month");
   const [customFromDate, setCustomFromDate] = useState<string>("");
   const [customToDate, setCustomToDate] = useState<string>("");
@@ -1105,6 +1108,15 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <span>إدارة المخازن والمستودع</span>
           </button>
           <button
+            onClick={() => setActiveTab("purchasing")}
+            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
+              activeTab === "purchasing" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>المشتريات والموردين</span>
+          </button>
+          <button
             onClick={() => setActiveTab("staff")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
               activeTab === "staff" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
@@ -1713,6 +1725,18 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
+                                {isLow && (
+                                  <button
+                                    onClick={() => {
+                                      setPurchaseRequestItemId(item.id);
+                                      setActiveTab("purchasing");
+                                    }}
+                                    className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded text-[10px] font-bold transition-all"
+                                    title="طلب شراء"
+                                  >
+                                    طلب شراء 🛒
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1789,6 +1813,15 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
               )}
 
             </div>
+          )}
+
+          {activeTab === "purchasing" && (
+            <PurchasingTab
+              inventoryItems={inventory}
+              fetchInventory={fetchAllData}
+              initialInventoryItemId={purchaseRequestItemId || undefined}
+              onNavigateToNewOrder={(itemId) => setPurchaseRequestItemId(itemId)}
+            />
           )}
 
           {activeTab === "staff" && (
