@@ -372,6 +372,41 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
   };
 
   db.orders.push(syncedOrder);
+
+  // ─── تحديث بيانات العميل (نقاط ولاء + رصيد آجل) ─────────
+  if (order.customerId && order.customerId !== "cust-1") {
+    if (!db.customers) db.customers = [];
+    const customer = db.customers.find((c: any) => c.id === order.customerId);
+    if (customer) {
+      customer.totalSpent = (customer.totalSpent || 0) + serverTotal;
+      customer.visitsCount = (customer.visitsCount || 0) + 1;
+
+      const pointsRate = db.settings?.loyaltyPointsPerCurrency ?? 0.1;
+      customer.loyaltyPoints = (customer.loyaltyPoints || 0) + Math.floor(serverTotal * pointsRate);
+
+      if (order.paymentMethod === "credit" || (order.payments || []).some((p: any) => p.method === "credit")) {
+        const maxCredit = db.settings?.maxCreditLimit ?? 5000;
+        const currentCredit = customer.creditBalance || 0;
+        if (currentCredit + serverTotal > maxCredit) {
+          return res.status(400).json({ error: `تجاوز الحد الائتماني المسموح به للعميل (${maxCredit} ر.س)! الرصيد المستحق الحالي: ${currentCredit} ر.س` });
+        }
+
+        customer.creditBalance = currentCredit + serverTotal;
+        if (!db.customer_ledger) db.customer_ledger = [];
+        db.customer_ledger.push({
+          id: `cl-${Date.now()}`,
+          customerId: order.customerId,
+          type: "purchase",
+          amount: serverTotal,
+          orderId: syncedOrder.id,
+          notes: `فاتورة #${orderNumber} — آجل`,
+          createdAt: new Date().toISOString(),
+          createdBy: order.cashierName || "كاشير",
+        });
+      }
+    }
+  }
+
   writeAuditLog("إصدار فاتورة", order.cashierId || "system", order.cashierName || "كاشير", `تم إصدار الفاتورة رقم #${orderNumber} بقيمة إجمالية: ${serverTotal} ر.س (${order.orderType === "dine_in" ? "داخلي" : order.orderType === "takeaway" ? "سفري" : "توصيل"})`);
 
   syncedOrder.items.forEach((item: any) => {

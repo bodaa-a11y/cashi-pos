@@ -103,7 +103,7 @@ export interface Order {
 export interface Payment {
   id: string;
   orderId: string;
-  method: 'cash' | 'card' | 'split' | 'other';
+  method: 'cash' | 'card' | 'split' | 'credit' | 'other';
   amount: number;
   tendered: number;
   changeDue: number;

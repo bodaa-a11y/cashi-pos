@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Coins, CreditCard, Receipt, Check, AlertCircle, Sparkles, Printer, Info } from "lucide-react";
+import { X, Coins, CreditCard, Receipt, Check, AlertCircle, Sparkles, Printer, Info, UserCheck, Search } from "lucide-react";
 import { Order, OrderItem, Payment, OrderType, Customer, Product } from "../types";
 import QRCode from "qrcode";
 
@@ -77,7 +77,12 @@ export default function PaymentModal({
   isOnline,
   notes,
 }: PaymentModalProps) {
-  const [method, setMethod] = useState<"cash" | "card" | "split">("cash");
+  const [method, setMethod] = useState<"cash" | "card" | "split" | "credit">("cash");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("cust-1");
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string>("عميل نقدي افتراضي");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>("");
+  const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState<boolean>(false);
   const [tendered, setTendered] = useState<string>(String(total));
   const [cashAmount, setCashAmount] = useState<string>(String(total));
   const [cardAmount, setCardAmount] = useState<string>("0");
@@ -106,10 +111,41 @@ export default function PaymentModal({
   }, []);
 
   useEffect(() => {
+    if (customerId) {
+      setSelectedCustomerId(customerId);
+      fetch(`/api/customers/${customerId}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.customer) {
+            setSelectedCustomerName(data.customer.name);
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [customerId]);
+
+  useEffect(() => {
+    if (customerSearchQuery.trim()) {
+      fetch(`/api/customers?search=${encodeURIComponent(customerSearchQuery)}`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSearchResults(data || []);
+          setShowCustomerDropdown(true);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setCustomerSearchResults([]);
+      setShowCustomerDropdown(false);
+    }
+  }, [customerSearchQuery]);
+
+  useEffect(() => {
     if (method === "cash") {
       setTendered(String(total));
     } else if (method === "card") {
       setTendered(String(total));
+    } else if (method === "credit") {
+      setTendered("0");
     } else {
       // Split default: 50/50
       const half = (total / 2).toFixed(2);
@@ -135,6 +171,10 @@ export default function PaymentModal({
     }
     if (method === "split" && (cashAmountValue + cardAmountValue) < total) {
       setError("إجمالي المبالغ المقسمة أقل من الفاتورة!");
+      return;
+    }
+    if (method === "credit" && selectedCustomerId === "cust-1") {
+      setError("الرجاء اختيار عميل حقيقي لتسجيل البيع الآجل!");
       return;
     }
 
@@ -174,6 +214,16 @@ export default function PaymentModal({
         changeDue: 0,
         createdAt: new Date().toISOString(),
       });
+    } else if (method === "credit") {
+      paymentsArray.push({
+        id: `pay-${Date.now()}-1`,
+        orderId: clientUuid,
+        method: "credit",
+        amount: total,
+        tendered: 0,
+        changeDue: 0,
+        createdAt: new Date().toISOString(),
+      });
     } else {
       paymentsArray.push(
         {
@@ -203,7 +253,7 @@ export default function PaymentModal({
       cashierId,
       waiterId,
       tableId,
-      customerId,
+      customerId: selectedCustomerId,
       orderType,
       status: "completed",
       subtotal,
@@ -793,8 +843,62 @@ export default function PaymentModal({
               </div>
             </div>
 
+            {/* Customer Search and Autocomplete */}
+            <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-2 text-right relative">
+              <label className="block text-xs font-bold text-stone-600">العميل المرتبط بالفاتورة (لنقاط الولاء والآجل)</label>
+              <div className="flex gap-2">
+                {selectedCustomerId !== "cust-1" ? (
+                  <div className="w-full flex items-center justify-between bg-[#EAF4EA] border border-green-200 text-[#2E7D32] px-3 py-2 rounded-xl text-xs font-bold">
+                    <span>{selectedCustomerName}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerId("cust-1");
+                        setSelectedCustomerName("عميل نقدي افتراضي");
+                      }}
+                      className="text-stone-400 hover:text-stone-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative w-full">
+                    <input
+                      type="text"
+                      placeholder="ابحث عن عميل باسمه أو رقم هاتفه..."
+                      value={customerSearchQuery}
+                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#2E7D32]"
+                    />
+                    <Search className="w-4 h-4 text-stone-400 absolute top-2.5 right-3" />
+                    
+                    {showCustomerDropdown && customerSearchResults.length > 0 && (
+                      <div className="absolute right-0 left-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-lg z-50 max-h-40 overflow-y-auto divide-y divide-stone-100">
+                        {customerSearchResults.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCustomerId(c.id);
+                              setSelectedCustomerName(c.name);
+                              setCustomerSearchQuery("");
+                              setShowCustomerDropdown(false);
+                            }}
+                            className="w-full text-right py-2 px-3 hover:bg-stone-50 text-xs font-bold text-stone-700 flex justify-between items-center"
+                          >
+                            <span>{c.name}</span>
+                            <span className="text-[10px] text-stone-400 font-mono">{c.phone || "بدون هاتف"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Selector methods */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <button
                 type="button"
                 onClick={() => setMethod("cash")}
@@ -830,6 +934,21 @@ export default function PaymentModal({
               >
                 <Receipt className="w-6 h-6" />
                 <span>تقسيم (كاش+شبكة)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMethod("credit")}
+                disabled={selectedCustomerId === "cust-1"}
+                className={`py-4 px-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all font-bold text-sm ${
+                  selectedCustomerId === "cust-1" ? "opacity-40 cursor-not-allowed border-stone-100 text-stone-400" :
+                  method === "credit"
+                    ? "bg-red-50 border-red-500 text-red-700 shadow-sm"
+                    : "border-stone-200 hover:bg-stone-50 text-stone-700"
+                }`}
+                title={selectedCustomerId === "cust-1" ? "اختر عميل حقيقي لتفعيل الدفع الآجل" : ""}
+              >
+                <UserCheck className="w-6 h-6" />
+                <span>دفع آجل</span>
               </button>
             </div>
 

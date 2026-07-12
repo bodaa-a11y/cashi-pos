@@ -87,8 +87,11 @@ export function getSeedData() {
     held_orders: [],
     shifts: [],
     customers: [
-      { id: "cust-1", name: "عميل نقدي افتراضي", phone: "0500000000", email: "", points: 0, createdAt: new Date().toISOString() }
+      { id: "cust-1", name: "عميل نقدي افتراضي", phone: "0500000000", email: "", points: 0,
+        loyaltyPoints: 0, creditBalance: 0, totalSpent: 0, visitsCount: 0, notes: "",
+        createdAt: new Date().toISOString() }
     ],
+    customer_ledger: [],
     inventory_items: [],
     inventory_transactions: [],
     suppliers: [],

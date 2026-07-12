@@ -27,6 +27,7 @@ import ordersRouter from "./routes/orders";
 import usersRouter from "./routes/users";
 import inventoryRouter from "./routes/inventory";
 import suppliersRouter from "./routes/suppliers";
+import customersRouter from "./routes/customers";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -146,6 +147,7 @@ export function createServer(dbPath?: string) {
   app.use(usersRouter);
   app.use(inventoryRouter);
   app.use(suppliersRouter);
+  app.use(customersRouter);
 
   // توجيه باقي المسارات لواجهة React (SPA Routing)
   app.get("*", (req, res, next) => {
