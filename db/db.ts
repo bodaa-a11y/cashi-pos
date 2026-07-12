@@ -96,6 +96,7 @@ export function getSeedData() {
     inventory_transactions: [],
     suppliers: [],
     purchase_orders: [],
+    expenses: [],
     recipes: [],
     print_jobs: [],
     audit_logs: []
