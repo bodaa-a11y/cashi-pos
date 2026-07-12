@@ -236,7 +236,7 @@ router.post("/api/shifts/open", authenticate(["admin", "manager", "cashier"]), (
 
 router.post("/api/shifts/:id/close", authenticate(["admin", "manager", "cashier"]), (req, res) => {
   const { id } = req.params;
-  const { actualCash, closingNotes } = req.body;
+  const { actualCash, closingCash, expectedCash, cashDifference, notes, closingNotes } = req.body;
   const db = readDB();
   const shift = db.shifts.find((s: any) => s.id === id);
 
@@ -244,13 +244,19 @@ router.post("/api/shifts/:id/close", authenticate(["admin", "manager", "cashier"
     return res.status(404).json({ error: "الوردية غير موجودة" });
   }
 
+  const finalActualCash = Number(actualCash !== undefined ? actualCash : (closingCash !== undefined ? closingCash : 0));
+  const finalNotes = notes || closingNotes || "";
+
   shift.status = "closed";
   shift.closedAt = new Date().toISOString();
-  shift.actualCash = Number(actualCash || 0);
-  shift.closingNotes = closingNotes || "";
+  shift.actualCash = finalActualCash;
+  shift.closingCash = finalActualCash;
+  shift.expectedCash = Number(expectedCash || 0);
+  shift.cashDifference = Number(cashDifference || 0);
+  shift.closingNotes = finalNotes;
 
   writeDB(db);
-  writeAuditLog("إغلاق وردية", shift.cashierId, shift.cashierName, `تم إغلاق الوردية رقم #${shift.shiftNumber} برصيد فعلي: ${actualCash} ر.س`);
+  writeAuditLog("إغلاق وردية", shift.cashierId, shift.cashierName, `تم إغلاق الوردية رقم #${shift.shiftNumber} برصيد فعلي: ${finalActualCash} ر.س`);
   res.json(shift);
 });
 
@@ -268,7 +274,9 @@ router.get("/api/shifts/:id/report", authenticate(["admin", "manager", "cashier"
 
   res.json({
     shift,
-    report: summary
+    expectedCash: shift.openingCash + summary.cashSales,
+    report: summary,
+    ...summary
   });
 });
 
