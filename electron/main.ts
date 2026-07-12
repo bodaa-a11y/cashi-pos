@@ -322,12 +322,33 @@ function registerIPCHandlers(): void {
   // ─── طباعة الإيصال ─────────────────────────────────────
   ipcMain.handle('print-receipt', async (_event, data) => {
     try {
+      if (data && data.structuredData && printerManager.isThermalConfigured()) {
+        try {
+          const result = await printerManager.printReceipt(data.structuredData);
+          console.log('✅ [كاشي] استُخدمت الطباعة الحرارية المباشرة ESC/POS للإيصال');
+          return { success: result };
+        } catch (err) {
+          console.error('[كاشي] ❌ فشلت الطباعة الحرارية المباشرة ESC/POS للإيصال، جاري استخدام الطباعة الاحتياطية:', err);
+          // Fallback to HTML printing
+          if (data.html && mainWindow && !mainWindow.isDestroyed()) {
+            console.log('ℹ️ [كاشي] استُخدمت الطباعة الاحتياطية عبر HTML للإيصال بعد فشل ESC/POS');
+            const result = await printerManager.fallbackPrint(data.html, mainWindow);
+            return { success: result };
+          }
+          throw err;
+        }
+      }
+
+      // السلوك القديم أو الافتراضي
       if (data && data.html) {
         if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log('ℹ️ [كاشي] استُخدمت الطباعة الاحتياطية عبر HTML للإيصال (السلوك الافتراضي)');
           const result = await printerManager.fallbackPrint(data.html, mainWindow);
           return { success: result };
         }
       }
+
+      // إذا لم يكن هناك HTML ولا structuredData، نحاول إرسال data مباشرة كحالة تراجع أخيرة
       const result = await printerManager.printReceipt(data);
       return { success: result };
     } catch (error) {
@@ -342,6 +363,32 @@ function registerIPCHandlers(): void {
   // ─── طباعة تذكرة المطبخ ────────────────────────────────
   ipcMain.handle('print-kitchen', async (_event, data) => {
     try {
+      if (data && data.structuredData && printerManager.isThermalConfigured()) {
+        try {
+          const result = await printerManager.printKitchenTicket(data.structuredData);
+          console.log('✅ [كاشي] استُخدمت الطباعة الحرارية المباشرة ESC/POS لتذكرة المطبخ');
+          return { success: result };
+        } catch (err) {
+          console.error('[كاشي] ❌ فشلت الطباعة الحرارية المباشرة ESC/POS لتذكرة المطبخ، جاري استخدام الطباعة الاحتياطية:', err);
+          // Fallback to HTML printing
+          if (data.html && mainWindow && !mainWindow.isDestroyed()) {
+            console.log('ℹ️ [كاشي] استُخدمت الطباعة الاحتياطية عبر HTML لتذكرة المطبخ بعد فشل ESC/POS');
+            const result = await printerManager.fallbackPrint(data.html, mainWindow);
+            return { success: result };
+          }
+          throw err;
+        }
+      }
+
+      // السلوك القديم أو الافتراضي
+      if (data && data.html) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log('ℹ️ [كاشي] استُخدمت الطباعة الاحتياطية عبر HTML لتذكرة المطبخ (السلوك الافتراضي)');
+          const result = await printerManager.fallbackPrint(data.html, mainWindow);
+          return { success: result };
+        }
+      }
+
       const result = await printerManager.printKitchenTicket(data);
       return { success: result };
     } catch (error) {

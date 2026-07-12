@@ -557,7 +557,7 @@ export default function PaymentModal({
 
     const kitchenHTML = generateKitchenHTML(localOrderNumber);
 
-    const printReceiptMockAndPhysical = async (receiptHtml: string, kitchenHtml: string, uuid: string, itemsArr: any[]) => {
+    const printReceiptMockAndPhysical = async (ordNum: number, receiptHtml: string, kitchenHtml: string, uuid: string, itemsArr: any[]) => {
       // Print Customer receipt mock
       await fetch("/api/print/receipt", {
         method: "POST",
@@ -576,8 +576,62 @@ export default function PaymentModal({
       const electronAPI = (window as any).electronAPI;
       if (electronAPI?.isElectron) {
         try {
-          await electronAPI.printReceipt({ html: receiptHtml });
-          await electronAPI.printReceipt({ html: kitchenHtml });
+          const receiptDataObject = {
+            businessName: bName,
+            businessNameEn: bNameEn || undefined,
+            branchName: bBranch || undefined,
+            address: bAddress || undefined,
+            phone: bPhone || undefined,
+            taxNumber: bTax || undefined,
+            receiptNumber: `FT-${ordNum}`,
+            date: new Date().toLocaleString('ar-SA'),
+            cashierName: cashierName || "كاشير",
+            orderType: orderType === 'dine_in' 
+              ? 'داخلي' 
+              : orderType === 'takeaway' 
+              ? 'سفري / تطبيقات' 
+              : 'توصيل',
+            tableId: tableId || undefined,
+            items: itemsArr.map(item => {
+              const unitPrice = item.unitPrice || (item.lineTotal / item.quantity);
+              return {
+                name: item.productNameSnapshot,
+                quantity: item.quantity,
+                unitPrice: unitPrice,
+                total: item.lineTotal
+              };
+            }),
+            subtotal: total - tax,
+            discount: discount || 0,
+            tax: tax || 0,
+            total: total,
+            payments: paymentsArray.map(p => ({
+              method: p.method === 'cash' ? 'نقداً' : 'شبكة',
+              amount: p.amount
+            })),
+            tendered: method === 'cash' ? tenderedValue : undefined,
+            change: method === 'cash' ? changeDue : undefined,
+            footerMessage: bFooter || undefined
+          };
+
+          const kitchenDataObject = {
+            orderNumber: String(ordNum),
+            date: new Date().toLocaleString('ar-SA'),
+            orderType: orderType === 'dine_in' 
+              ? 'داخلي' 
+              : orderType === 'takeaway' 
+              ? 'سفري / تطبيقات' 
+              : 'توصيل',
+            tableId: tableId || undefined,
+            items: itemsArr.map(item => ({
+              name: item.productNameSnapshot,
+              quantity: item.quantity,
+              notes: item.notes || undefined
+            }))
+          };
+
+          await electronAPI.printReceipt({ html: receiptHtml, structuredData: receiptDataObject });
+          await electronAPI.printKitchenTicket({ html: kitchenHtml, structuredData: kitchenDataObject });
         } catch (printErr) {
           console.error("Auto print failed:", printErr);
         }
@@ -604,7 +658,7 @@ export default function PaymentModal({
       setReceiptHTML(finalHtml);
 
       // Trigger print with real order number
-      await printReceiptMockAndPhysical(finalHtml, finalKitchenHtml, clientUuid, orderItems);
+      await printReceiptMockAndPhysical(actualOrderNumber, finalHtml, finalKitchenHtml, clientUuid, orderItems);
 
       setSuccess(true);
     } catch (e) {
@@ -616,7 +670,7 @@ export default function PaymentModal({
 
       // Trigger local mock print with local HTML
       try {
-        await printReceiptMockAndPhysical(html, kitchenHTML, clientUuid, orderItems);
+        await printReceiptMockAndPhysical(localOrderNumber, html, kitchenHTML, clientUuid, orderItems);
       } catch (err) {
         console.error("Local preview print failed:", err);
       }

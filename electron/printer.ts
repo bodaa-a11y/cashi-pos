@@ -190,6 +190,13 @@ export class PrinterManager {
     return PrinterManager.instance;
   }
 
+  /**
+   * التحقق مما إذا كانت الطابعة الحرارية مهيأة ومتاحة
+   */
+  isThermalConfigured(): boolean {
+    return this.isThermalAvailable && this.printerConfig !== null;
+  }
+
   // ═══════════════════════════════════════════════════════
   //  تهيئة الطابعة الحرارية
   // ═══════════════════════════════════════════════════════
