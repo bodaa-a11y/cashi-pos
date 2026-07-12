@@ -74,6 +74,7 @@ export interface OrderItem {
   quantity: number;
   lineTotal: number;
   notes?: string;
+  status?: 'pending' | 'preparing' | 'ready' | 'delivered';
 }
 
 export interface Order {

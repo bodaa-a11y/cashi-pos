@@ -4,9 +4,10 @@ import { User as UserType } from "../types";
 
 interface PinLoginProps {
   onLoginSuccess: (user: UserType, token: string) => void;
+  onOpenKitchen?: () => void;
 }
 
-export default function PinLogin({ onLoginSuccess }: PinLoginProps) {
+export default function PinLogin({ onLoginSuccess, onOpenKitchen }: PinLoginProps) {
   const [pin, setPin] = useState("");
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [username, setUsername] = useState("");
@@ -113,7 +114,16 @@ export default function PinLogin({ onLoginSuccess }: PinLoginProps) {
         )}
 
         {/* Toggle Mode Button */}
-        <div className="px-6 pt-4 flex justify-center">
+        <div className="px-6 pt-4 flex flex-col gap-3 justify-center">
+          {onOpenKitchen && (
+            <button
+              type="button"
+              onClick={onOpenKitchen}
+              className="py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+            >
+              📺 الانتقال لشاشة المطبخ (KDS)
+            </button>
+          )}
           <div className="flex bg-stone-100 p-1 rounded-xl w-full">
             <button
               onClick={() => {

@@ -331,6 +331,9 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
     const actualPrice = Number(prod.price);
     item.unitPrice = actualPrice; // فرض السعر الحقيقي من السيرفر
     item.lineTotal = actualPrice * item.quantity;
+    if (!item.status) {
+      item.status = "pending";
+    }
     serverSubtotal += item.lineTotal;
   }
 
@@ -771,6 +774,23 @@ router.post("/api/orders/:id/refund", authenticate(["admin", "manager"]), (req, 
     `تم عمل مرتجع للفاتورة #${order.orderNumber} لسبب: ${reason}`
   );
 
+  res.json({ success: true, order });
+});
+
+// تحديث حالة صنف في الطلب بالمطبخ
+router.post("/api/orders/:orderId/items/:itemId/status", authenticate(["admin", "manager", "cashier", "waiter"]), (req, res) => {
+  const { orderId, itemId } = req.params;
+  const { status } = req.body; // pending | preparing | ready | delivered
+  const db = readDB();
+  const order = db.orders.find((o: any) => o.id === orderId);
+  if (!order) return res.status(404).json({ error: "الطلب غير موجود" });
+  if (!order.items) order.items = [];
+  const item = order.items.find((i: any) => i.id === itemId);
+  if (!item) return res.status(404).json({ error: "الصنف غير موجود بالطلب" });
+  
+  item.status = status;
+  writeDB(db);
+  broadcastOrder({ type: "order_item_updated", orderId, itemId, status, order });
   res.json({ success: true, order });
 });
 

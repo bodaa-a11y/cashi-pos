@@ -191,6 +191,7 @@ export default function PaymentModal({
       quantity: item.quantity,
       lineTotal: item.product.price * item.quantity,
       notes: item.notes,
+      status: "pending",
     }));
 
     const paymentsArray: Payment[] = [];

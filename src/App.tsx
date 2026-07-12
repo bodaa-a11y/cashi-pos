@@ -8,6 +8,7 @@ import HeldOrders from "./components/HeldOrders";
 import AdminDashboard from "./components/AdminDashboard";
 import SaleInvoice from "./components/SaleInvoice";
 import SetupWizard from "./components/SetupWizard";
+import KitchenDashboard from "./components/pos/KitchenDashboard";
 
 import { User, Shift, HeldOrder, Order } from "./types";
 import { Wifi, WifiOff, AlertTriangle, RefreshCw, Layers, Database } from "lucide-react";
@@ -78,7 +79,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 function CashiApp() {
   // Navigation states
-  const [activeScreen, setActiveScreen] = useState<"splash" | "setup" | "login" | "open_shift" | "sales" | "admin">("splash");
+  const [activeScreen, setActiveScreen] = useState<"splash" | "setup" | "login" | "open_shift" | "sales" | "admin" | "kitchen">("splash");
   
   // إعدادات المنشأة
   const [settings, setSettings] = useState<any>(null);
@@ -380,7 +381,11 @@ function CashiApp() {
       )}
 
       {activeScreen === "login" && (
-        <PinLogin onLoginSuccess={handleLoginSuccess} />
+        <PinLogin onLoginSuccess={handleLoginSuccess} onOpenKitchen={() => setActiveScreen("kitchen")} />
+      )}
+
+      {activeScreen === "kitchen" && (
+        <KitchenDashboard onBack={() => setActiveScreen("login")} />
       )}
 
       {activeScreen === "open_shift" && currentUser && (
