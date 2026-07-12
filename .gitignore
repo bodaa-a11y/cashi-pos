@@ -3,7 +3,9 @@ build/
 dist/
 dist-electron/
 release/
-# db.json
+db.json
+backups/
+*.db.json
 coverage/
 .DS_Store
 *.log

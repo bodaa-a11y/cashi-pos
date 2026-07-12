@@ -98,6 +98,9 @@ export function getSeedData() {
 }
 
 export function readLocalDBOnly() {
+  if (DB_FILE.includes(process.cwd()) && !process.env.NODE_ENV?.includes("test")) {
+    console.warn("⚠️ [تحذير كاشي] قاعدة البيانات تعمل بمسار نسبي داخل مجلد المشروع! هذا خطير في بيئة الإنتاج وقد يؤدي لفقدان البيانات.");
+  }
   if (!fs.existsSync(DB_FILE)) {
     const seedData = getSeedData();
     const tempPath = `${DB_FILE}.tmp`;
