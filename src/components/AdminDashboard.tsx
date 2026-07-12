@@ -154,6 +154,9 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [reportResult, setReportResult] = useState<any>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [latestOrders, setLatestOrders] = useState<any[]>([]);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("");
+  const [invoiceFilterMethod, setInvoiceFilterMethod] = useState<"all" | "cash" | "card" | "credit">("all");
+  const [invoiceFilterType, setInvoiceFilterType] = useState<"all" | "dine_in" | "takeaway" | "delivery">("all");
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<any>(null);
   
   // Data lists
@@ -1040,6 +1043,33 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     p.nameAr.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.nameEn && p.nameEn.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const filteredInvoices = latestOrders.filter(order => {
+    if (invoiceSearchQuery.trim()) {
+      const q = invoiceSearchQuery.toLowerCase();
+      const orderNumString = String(order.orderNumber || "");
+      const orderIdString = String(order.id || "").toLowerCase();
+      const customerIdString = String(order.customerId || "").toLowerCase();
+      const cashierNameString = String(order.cashierName || "").toLowerCase();
+      const matchesSearch = 
+        orderNumString.includes(q) || 
+        orderIdString.includes(q) || 
+        customerIdString.includes(q) ||
+        cashierNameString.includes(q);
+      if (!matchesSearch) return false;
+    }
+
+    if (invoiceFilterMethod !== "all") {
+      const hasMethod = (order.payments || []).some((p: any) => p.method === invoiceFilterMethod);
+      if (!hasMethod) return false;
+    }
+
+    if (invoiceFilterType !== "all") {
+      if (order.orderType !== invoiceFilterType) return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col font-sans">
@@ -2103,7 +2133,40 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
 
               {/* قائمة آخر الفواتير وإعادة الطباعة */}
               <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4">
-                <h3 className="font-bold text-stone-800 text-sm">سجل الفواتير الأخيرة (آخر 50 فاتورة)</h3>
+                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 border-b border-stone-100 pb-3">
+                  <h3 className="font-bold text-stone-800 text-sm">سجل الفواتير الأخيرة (آخر 50 فاتورة)</h3>
+                  
+                  {/* Filters and search block */}
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <input
+                      type="text"
+                      placeholder="بحث برقم الفاتورة/الكاشير..."
+                      value={invoiceSearchQuery}
+                      onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                      className="border border-stone-200 rounded-xl px-3 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#2E7D32] bg-stone-50"
+                    />
+                    <select
+                      value={invoiceFilterMethod}
+                      onChange={(e: any) => setInvoiceFilterMethod(e.target.value)}
+                      className="border border-stone-200 rounded-xl px-3 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#2E7D32] bg-stone-50"
+                    >
+                      <option value="all">كل طرق الدفع</option>
+                      <option value="cash">كاش</option>
+                      <option value="card">شبكة</option>
+                      <option value="credit">آجل</option>
+                    </select>
+                    <select
+                      value={invoiceFilterType}
+                      onChange={(e: any) => setInvoiceFilterType(e.target.value)}
+                      className="border border-stone-200 rounded-xl px-3 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#2E7D32] bg-stone-50"
+                    >
+                      <option value="all">كل أنواع الطلبات</option>
+                      <option value="dine_in">داخلي</option>
+                      <option value="takeaway">سفري</option>
+                      <option value="delivery">توصيل</option>
+                    </select>
+                  </div>
+                </div>
                 
                 <div className="overflow-x-auto">
                   <table className="w-full text-right text-xs">
@@ -2118,7 +2181,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100 font-medium">
-                      {latestOrders.map((order) => (
+                      {filteredInvoices.map((order) => (
                         <tr key={order.id} className="hover:bg-stone-50/50">
                           <td className="p-3 font-bold text-stone-800">#FT-{order.orderNumber}</td>
                           <td className="p-3 text-stone-500 font-mono text-[10px]">
@@ -2134,7 +2197,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                             )}
                           </td>
                           <td className="p-3 text-stone-600">
-                            {order.payments.map((p: any) => p.method === "cash" ? "كاش" : "شبكة").join(" + ")}
+                            {order.payments.map((p: any) => p.method === "cash" ? "كاش" : p.method === "credit" ? "آجل" : "شبكة").join(" + ")}
                           </td>
                           <td className="p-3 text-left font-mono font-bold text-stone-800">
                             {order.total.toFixed(2)} {settingsForm.currency}
@@ -2150,10 +2213,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                           </td>
                         </tr>
                       ))}
-                      {latestOrders.length === 0 && (
+                      {filteredInvoices.length === 0 && (
                         <tr>
                           <td colSpan={6} className="p-8 text-center text-stone-400">
-                            لا توجد فواتير مكتملة مسجلة في السجل بعد.
+                            لا توجد فواتير مطابقة للبحث أو التصفية الحالية.
                           </td>
                         </tr>
                       )}
