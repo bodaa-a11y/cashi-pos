@@ -23,7 +23,11 @@ window.fetch = async (input, init) => {
       }
     }
   }
-  return originalFetch(input, init);
+  const response = await originalFetch(input, init);
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("pos-logout"));
+  }
+  return response;
 };
 
 createRoot(document.getElementById('root')!).render(

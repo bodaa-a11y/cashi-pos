@@ -2,6 +2,19 @@ import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
 
 function generateZatcaString(sellerName: string, vatNumber: string, dateStr: string, total: number, vatAmount: number): string {
+  // Normalize date to strict ISO 8601 without milliseconds as required by ZATCA
+  let normalizedDate = dateStr;
+  try {
+    const d = new Date(dateStr);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    normalizedDate = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}Z`;
+  } catch (e) {
+    normalizedDate = dateStr.split('.')[0];
+    if (!normalizedDate.endsWith('Z')) {
+      normalizedDate += 'Z';
+    }
+  }
+
   const getTlv = (tag: number, val: string) => {
     const encoder = new TextEncoder();
     const valBuf = encoder.encode(val);
@@ -16,7 +29,7 @@ function generateZatcaString(sellerName: string, vatNumber: string, dateStr: str
 
   const tlv1 = getTlv(1, sellerName);
   const tlv2 = getTlv(2, vatNumber);
-  const tlv3 = getTlv(3, dateStr);
+  const tlv3 = getTlv(3, normalizedDate);
   const tlv4 = getTlv(4, total.toFixed(2));
   const tlv5 = getTlv(5, vatAmount.toFixed(2));
 
@@ -415,12 +428,12 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     try {
       const bCurrency = settingsForm.currency || "ر.س";
       const bFooter = settingsForm.receiptFooter || "شكراً لزيارتكم!";
-      const bName = settingsForm.businessNameAr || "مطاعم دبل للوجبات السريعة";
+      const bName = settingsForm.businessNameAr || "مؤسسة مقبوله مران غازي الهفيل للتجارة";
       const bNameEn = settingsForm.businessNameEn || "Double Fast Food Restaurants";
       const bBranch = settingsForm.branchName || "الخرج";
       const bTax = settingsForm.taxNumber || "311798679800003";
-      const bCR = (settingsForm as any).commercialReg || "1011153965";
-      const bAddress = settingsForm.address || "حي الورود، طريق ثمامة، الخرج";
+      const bCR = (settingsForm as any).commercialReg || "7034371000";
+      const bAddress = settingsForm.address || "الخرج، طريق ثمامه - حي الورود";
       const bPhone = settingsForm.phone || "0555107546";
 
       // ZATCA QR Code generation
@@ -437,22 +450,23 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
         <head>
           <meta charset="utf-8">
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
             @page {
               margin: 0;
+              size: auto;
             }
             body {
               margin: 0;
-              padding: 8px 12px;
-              font-family: 'Cairo', sans-serif;
+              padding: 4px 6px;
+              font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
               background: white;
               color: black;
               direction: rtl;
               text-align: right;
+              -webkit-print-color-adjust: exact;
             }
             .receipt-container {
               width: 100%;
-              max-width: 270px;
+              max-width: 100%;
               margin: 0 auto;
               font-size: 11px;
               line-height: 1.4;
@@ -584,13 +598,19 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 </tr>
               </thead>
               <tbody>
-                ${order.items.map((item: any) => `
-                  <tr>
-                    <td style="text-align: right;">${item.productNameSnapshot}</td>
-                    <td style="text-align: center;">${item.quantity}</td>
-                    <td style="text-align: left;">${item.lineTotal.toFixed(2)} ${bCurrency}</td>
-                  </tr>
-                `).join('')}
+                ${order.items.map((item: any) => {
+                  const unitPrice = item.unitPrice || (item.lineTotal / item.quantity);
+                  return `
+                    <tr>
+                      <td style="text-align: right; padding-bottom: 4px;">
+                        <div style="font-weight: bold;">${item.productNameSnapshot}</div>
+                        <div style="font-size: 9px; color: #555; margin-top: 1.5px;">${item.quantity} × ${unitPrice.toFixed(2)} ${bCurrency}</div>
+                      </td>
+                      <td style="text-align: center;">${item.quantity}</td>
+                      <td style="text-align: left; font-weight: bold; vertical-align: bottom;">${item.lineTotal.toFixed(2)} ${bCurrency}</td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
             </table>
 

@@ -218,8 +218,374 @@ export default function PaymentModal({
       ignoreShiftValidation: true // For local offline-first fallback
     };
 
+    // 1. Generate Receipt HTML (generate it first so it's always ready for printing/display!)
+    const bName = settings?.businessNameAr || "مؤسسة مقبوله مران غازي الهفيل للتجارة";
+    const bNameEn = settings?.businessNameEn || "";
+    const bBranch = settings?.branchName || "الخرج";
+    const bTax = settings?.taxNumber || "311798679800003";
+    const bCR = (settings as any)?.commercialReg || "7034371000";
+    const bAddress = settings?.address || "الخرج، طريق ثمامه - حي الورود";
+    const bPhone = settings?.phone || "0555107546";
+    const bFooter = settings?.receiptFooter || "شكراً لزيارتكم!";
+    const bCurrency = settings?.currency || "ر.س";
+
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const invoiceDate = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}Z`;
+    
+    let qrCodeDataUrl = "";
     try {
-      // 1. Submit order to DB
+      const zatcaString = generateZatcaString(bName, bTax, invoiceDate, total, tax);
+      // Increased size to 200 and set errorCorrectionLevel to H for excellent thermal print scanning!
+      qrCodeDataUrl = await QRCode.toDataURL(zatcaString, { margin: 1, width: 200, errorCorrectionLevel: 'H' });
+    } catch (err) {
+      console.error("Error generating ZATCA QR Code:", err);
+    }
+
+    // Determine invoice number for receipt layout: try to guess next number locally or fall back
+    // (We'll update it if the server response returns a real one, but this ensures a preview is always shown)
+    const localOrderNumber = Math.floor(Math.random() * 9000) + 1000;
+
+    const generateHTML = (ordNum: number) => `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          @page {
+            margin: 0;
+            size: auto;
+          }
+          body {
+            margin: 0;
+            padding: 4px 6px;
+            font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
+            background: white;
+            color: black;
+            direction: rtl;
+            text-align: right;
+            -webkit-print-color-adjust: exact;
+          }
+          .receipt-container {
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            font-size: 11px;
+            line-height: 1.4;
+          }
+          .text-center {
+            text-align: center;
+          }
+          .receipt-header {
+            border-bottom: 1px dashed black;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+          }
+          .receipt-logo {
+            width: 70px;
+            height: 70px;
+            object-fit: contain;
+            margin: 0 auto 6px;
+            display: block;
+          }
+          .receipt-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin: 2px 0;
+          }
+          .receipt-subtitle {
+            font-size: 10px;
+            margin: 1px 0;
+            color: #444;
+          }
+          .receipt-info-block {
+            border-bottom: 1px dashed black;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            font-size: 10px;
+          }
+          .receipt-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 1px 0;
+          }
+          .receipt-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0;
+          }
+          .receipt-table th {
+            border-bottom: 1px solid black;
+            font-weight: bold;
+            padding: 4px 0;
+            font-size: 10px;
+          }
+          .receipt-table td {
+            padding: 5px 0;
+            font-size: 11px;
+            vertical-align: middle;
+          }
+          .receipt-totals {
+            border-top: 1px dashed black;
+            padding-top: 6px;
+            margin-top: 6px;
+          }
+          .receipt-total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+          }
+          .receipt-grand-total {
+            font-size: 13px;
+            font-weight: bold;
+            border-top: 1px solid black;
+            border-bottom: 1px solid black;
+            padding: 5px 0;
+            margin-top: 4px;
+          }
+          .qr-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 10px 0;
+          }
+          .qr-code {
+            width: 125px;
+            height: 125px;
+            display: block;
+            margin: 0 auto;
+          }
+          .receipt-footer {
+            text-align: center;
+            font-size: 9px;
+            border-top: 1px dashed black;
+            padding-top: 8px;
+            margin-top: 8px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <div class="receipt-header text-center">
+            ${settings?.logoBase64 ? `<img src="${settings.logoBase64}" class="receipt-logo" />` : ''}
+            <div class="receipt-title">${bName}</div>
+            <div class="receipt-subtitle">${bNameEn}</div>
+            <div style="font-size: 12px; font-weight: bold; margin-top: 6px; border: 1.5px solid black; padding: 3px 6px; display: inline-block; border-radius: 4px;">فاتورة ضريبية مبسطة</div>
+            ${bBranch ? `<div class="receipt-subtitle" style="margin-top: 4px;">فرع: ${bBranch}</div>` : ''}
+            ${bAddress ? `<div class="receipt-subtitle">${bAddress}</div>` : ''}
+            ${bPhone ? `<div class="receipt-subtitle">هاتف: ${bPhone}</div>` : ''}
+            ${bTax ? `<div class="receipt-subtitle">الرقم الضريبي: ${bTax}</div>` : ''}
+            ${bCR ? `<div class="receipt-subtitle">رقم السجل التجاري: ${bCR}</div>` : ''}
+          </div>
+
+          <div class="receipt-info-block">
+            <div class="receipt-info-row"><span>رقم الفاتورة:</span><span>#FT-${ordNum}</span></div>
+            <div class="receipt-info-row"><span>التاريخ والوقت:</span><span>${new Date().toLocaleString('ar-SA')}</span></div>
+            <div class="receipt-info-row"><span>الكاشير:</span><span>${cashierName}</span></div>
+            <div class="receipt-info-row"><span>نوع الطلب:</span><span>${
+              orderType === 'dine_in' 
+                ? 'داخلي (طاولة ' + (tableId || '') + ')' 
+                : orderType === 'takeaway' 
+                ? 'سفري / تطبيقات (' + (notes || '') + ')' 
+                : 'توصيل للمنزل'
+            }</span></div>
+          </div>
+
+          <table class="receipt-table">
+            <thead>
+              <tr>
+                <th style="text-align: right; width: 50%;">الصنف</th>
+                <th style="text-align: center; width: 20%;">الكمية</th>
+                <th style="text-align: left; width: 30%;">المجموع</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderItems.map(item => {
+                const unitPrice = item.unitPrice || (item.lineTotal / item.quantity);
+                return `
+                  <tr>
+                    <td style="text-align: right; padding-bottom: 4px;">
+                      <div style="font-weight: bold;">${item.productNameSnapshot}</div>
+                      <div style="font-size: 10px; color: #333; margin-top: 1.5px;">${item.quantity} * ${unitPrice.toFixed(2)} = ${item.lineTotal.toFixed(2)} ${bCurrency}</div>
+                    </td>
+                    <td style="text-align: center;">${item.quantity}</td>
+                    <td style="text-align: left; font-weight: bold; vertical-align: bottom;">${item.lineTotal.toFixed(2)} ${bCurrency}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="receipt-totals">
+            <div class="receipt-total-row"><span>الإجمالي الفرعي (خاضع للضريبة):</span><span>${(total - tax).toFixed(2)} ${bCurrency}</span></div>
+            ${discount > 0 ? `<div class="receipt-total-row" style="color: red;"><span>الخصم:</span><span>-${discount.toFixed(2)} ${bCurrency}</span></div>` : ''}
+            ${tax > 0 ? `<div class="receipt-total-row"><span>ضريبة القيمة المضافة ${settings?.vatRate || 15}%:</span><span>${tax.toFixed(2)} ${bCurrency}</span></div>` : ''}
+            <div class="receipt-total-row receipt-grand-total"><span>الإجمالي الكلي (شامل الضريبة):</span><span>${total.toFixed(2)} ${bCurrency}</span></div>
+          </div>
+
+          <div class="receipt-totals" style="border-top: none; margin-top: 4px;">
+            <div class="receipt-total-row" style="font-weight: bold;"><span>طريقة الدفع:</span><span></span></div>
+            ${paymentsArray.map(p => `
+              <div class="receipt-total-row">
+                <span>${p.method === 'cash' ? 'نقداً (كاش)' : 'مدى / فيزا (شبكة)'}:</span>
+                <span>${p.amount.toFixed(2)} ${bCurrency}</span>
+              </div>
+            `).join('')}
+            ${method === 'cash' ? `
+              <div class="receipt-total-row"><span>المبلغ المدفوع:</span><span>${tenderedValue.toFixed(2)} ${bCurrency}</span></div>
+              <div class="receipt-total-row" style="font-weight: bold; color: green;"><span>المتبقي للعميل:</span><span>${changeDue.toFixed(2)} ${bCurrency}</span></div>
+            ` : ''}
+          </div>
+
+          ${qrCodeDataUrl ? `
+            <div class="qr-container">
+              <img src="${qrCodeDataUrl}" class="qr-code" />
+            </div>
+          ` : ''}
+
+          <div class="receipt-footer">
+            <p>${bFooter}</p>
+            <p style="margin-top: 4px; font-weight: bold;">فاتورة مبسطة خاضعة للمواصفات الضريبية</p>
+            <p>نظام كاشي لإدارة نقاط البيع Cashi POS</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const html = generateHTML(localOrderNumber);
+    setReceiptHTML(html);
+
+    // Kitchen receipt HTML template (prices hidden, large font)
+    const generateKitchenHTML = (ordNum: number) => `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          @page {
+            margin: 0;
+            size: auto;
+          }
+          body {
+            margin: 0;
+            padding: 4px 6px;
+            font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
+            background: white;
+            color: black;
+            direction: rtl;
+            text-align: right;
+            -webkit-print-color-adjust: exact;
+          }
+          .kitchen-container {
+            width: 100%;
+            max-width: 270px;
+            margin: 0 auto;
+            font-size: 13px;
+            line-height: 1.4;
+          }
+          .text-center {
+            text-align: center;
+          }
+          .kitchen-header {
+            border-bottom: 2px solid black;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+          }
+          .kitchen-table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .kitchen-table th {
+            border-bottom: 2px solid black;
+            padding: 4px 0;
+            font-size: 12px;
+            font-weight: bold;
+          }
+          .kitchen-table td {
+            padding: 6px 0;
+            font-size: 14px;
+            font-weight: bold;
+            border-bottom: 1px solid #ccc;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="kitchen-container">
+          <div class="kitchen-header text-center">
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold;">*** تذكرة المطبخ ***</h2>
+            <div style="font-size: 18px; font-weight: bold; margin: 4px 0; border: 2px solid black; padding: 4px; display: inline-block;">رقم الطلب: #${ordNum}</div>
+            <div style="font-size: 11px;">التاريخ: ${new Date().toLocaleString('ar-SA')}</div>
+            <div style="font-size: 12px; font-weight: bold; margin-top: 2px;">
+              النوع: ${
+                orderType === 'dine_in' 
+                  ? 'داخلي (طاولة ' + (tableId || '') + ')' 
+                  : orderType === 'takeaway' 
+                  ? 'سفري / تطبيقات (' + (notes || '') + ')' 
+                  : 'توصيل'
+              }
+            </div>
+          </div>
+          <table class="kitchen-table">
+            <thead>
+              <tr>
+                <th style="text-align: right; width: 70%;">الصنف</th>
+                <th style="text-align: center; width: 30%;">الكمية</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderItems.map(item => `
+                <tr>
+                  <td style="text-align: right;">${item.productNameSnapshot}</td>
+                  <td style="text-align: center; font-size: 18px;">${item.quantity}</td>
+                </tr>
+                ${item.notes ? `
+                  <tr>
+                    <td colspan="2" style="font-size: 12px; color: red; padding: 4px 0; font-weight: bold;">
+                      ⚠️ ملاحظة: ${item.notes}
+                    </td>
+                  </tr>
+                ` : ''}
+              `).join('')}
+            </tbody>
+          </table>
+          <div style="text-align: center; font-size: 10px; margin-top: 15px; border-top: 1px dashed black; padding-top: 5px;">
+            نظام كاشي لإدارة نقاط البيع Cashi POS
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const kitchenHTML = generateKitchenHTML(localOrderNumber);
+
+    const printReceiptMockAndPhysical = async (receiptHtml: string, kitchenHtml: string, uuid: string, itemsArr: any[]) => {
+      // Print Customer receipt mock
+      await fetch("/api/print/receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: uuid, total, items: itemsArr }),
+      }).catch(err => console.warn("Mock print receipt failed:", err));
+
+      // Print Kitchen ticket mock
+      await fetch("/api/print/kitchen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: uuid, items: itemsArr, tableId, orderType }),
+      }).catch(err => console.warn("Mock print kitchen failed:", err));
+
+      // Automatic physical dual printing under Electron
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.isElectron) {
+        try {
+          await electronAPI.printReceipt({ html: receiptHtml });
+          await electronAPI.printReceipt({ html: kitchenHtml });
+        } catch (printErr) {
+          console.error("Auto print failed:", printErr);
+        }
+      }
+    };
+
+    try {
+      // 2. Submit order to DB
       const res = await fetch("/api/orders/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,363 +597,35 @@ export default function PaymentModal({
       }
 
       const responseData = await res.json();
-      const actualOrderNumber = responseData?.order?.orderNumber || (Math.floor(Math.random() * 9000) + 1000);
+      const actualOrderNumber = responseData?.order?.orderNumber || localOrderNumber;
 
-      // Generate receipt HTML template for printer simulation
-      const bName = settings?.businessNameAr || "مطاعم دبل للوجبات السريعة";
-      const bNameEn = settings?.businessNameEn || "Double Fast Food Restaurants";
-      const bBranch = settings?.branchName || "الخرج";
-      const bTax = settings?.taxNumber || "311798679800003";
-      const bCR = (settings as any)?.commercialReg || "1011153965";
-      const bAddress = settings?.address || "حي الورود، طريق ثمامة، الخرج";
-      const bPhone = settings?.phone || "0555107546";
-      const bFooter = settings?.receiptFooter || "شكراً لزيارتكم!";
-      const bCurrency = settings?.currency || "ر.س";
+      const finalHtml = generateHTML(actualOrderNumber);
+      const finalKitchenHtml = generateKitchenHTML(actualOrderNumber);
+      setReceiptHTML(finalHtml);
 
-      // ZATCA QR Code generation
-      const invoiceDate = new Date().toISOString();
-      let qrCodeDataUrl = "";
-      try {
-        const zatcaString = generateZatcaString(bName, bTax, invoiceDate, total, tax);
-        qrCodeDataUrl = await QRCode.toDataURL(zatcaString, { margin: 1, width: 120 });
-      } catch (err) {
-        console.error("Error generating ZATCA QR Code:", err);
-      }
-
-      const html = `
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-            @page {
-              margin: 0;
-            }
-            body {
-              margin: 0;
-              padding: 8px 12px;
-              font-family: 'Cairo', sans-serif;
-              background: white;
-              color: black;
-              direction: rtl;
-              text-align: right;
-            }
-            .receipt-container {
-              width: 100%;
-              max-width: 270px;
-              margin: 0 auto;
-              font-size: 11px;
-              line-height: 1.4;
-            }
-            .text-center {
-              text-align: center;
-            }
-            .receipt-header {
-              border-bottom: 1px dashed black;
-              padding-bottom: 8px;
-              margin-bottom: 8px;
-            }
-            .receipt-logo {
-              width: 70px;
-              height: 70px;
-              object-fit: contain;
-              margin: 0 auto 6px;
-              display: block;
-            }
-            .receipt-title {
-              font-size: 13px;
-              font-weight: bold;
-              margin: 2px 0;
-            }
-            .receipt-subtitle {
-              font-size: 10px;
-              margin: 1px 0;
-              color: #444;
-            }
-            .receipt-info-block {
-              border-bottom: 1px dashed black;
-              padding-bottom: 6px;
-              margin-bottom: 8px;
-              font-size: 10px;
-            }
-            .receipt-info-row {
-              display: flex;
-              justify-content: space-between;
-              margin: 1px 0;
-            }
-            .receipt-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 8px 0;
-            }
-            .receipt-table th {
-              border-bottom: 1px solid black;
-              font-weight: bold;
-              padding: 4px 0;
-              font-size: 10px;
-            }
-            .receipt-table td {
-              padding: 5px 0;
-              font-size: 11px;
-              vertical-align: middle;
-            }
-            .receipt-totals {
-              border-top: 1px dashed black;
-              padding-top: 6px;
-              margin-top: 6px;
-            }
-            .receipt-total-row {
-              display: flex;
-              justify-content: space-between;
-              margin: 2px 0;
-            }
-            .receipt-grand-total {
-              font-size: 13px;
-              font-weight: bold;
-              border-top: 1px solid black;
-              border-bottom: 1px solid black;
-              padding: 5px 0;
-              margin-top: 4px;
-            }
-            .qr-container {
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              margin: 10px 0;
-            }
-            .qr-code {
-              width: 110px;
-              height: 110px;
-              display: block;
-              margin: 0 auto;
-            }
-            .receipt-footer {
-              text-align: center;
-              font-size: 9px;
-              border-top: 1px dashed black;
-              padding-top: 8px;
-              margin-top: 8px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="receipt-container">
-            <div class="receipt-header text-center">
-              ${settings?.logoBase64 ? `<img src="${settings.logoBase64}" class="receipt-logo" />` : ''}
-              <div class="receipt-title">${bName}</div>
-              <div class="receipt-subtitle">${bNameEn}</div>
-              ${bBranch ? `<div class="receipt-subtitle">فرع: ${bBranch}</div>` : ''}
-              ${bAddress ? `<div class="receipt-subtitle">${bAddress}</div>` : ''}
-              ${bPhone ? `<div class="receipt-subtitle">هاتف: ${bPhone}</div>` : ''}
-              ${bTax ? `<div class="receipt-subtitle">الرقم الضريبي: ${bTax}</div>` : ''}
-              ${bCR ? `<div class="receipt-subtitle">رقم السجل التجاري: ${bCR}</div>` : ''}
-            </div>
-
-            <div class="receipt-info-block">
-              <div class="receipt-info-row"><span>رقم الفاتورة:</span><span>#FT-${actualOrderNumber}</span></div>
-              <div class="receipt-info-row"><span>التاريخ والوقت:</span><span>${new Date().toLocaleString('ar-SA')}</span></div>
-              <div class="receipt-info-row"><span>الكاشير:</span><span>${cashierName}</span></div>
-              <div class="receipt-info-row"><span>نوع الطلب:</span><span>${
-                orderType === 'dine_in' 
-                  ? 'داخلي (طاولة ' + (tableId || '') + ')' 
-                  : orderType === 'takeaway' 
-                  ? 'سفري / تطبيقات (' + (notes || '') + ')' 
-                  : 'توصيل للمنزل'
-              }</span></div>
-            </div>
-
-            <table class="receipt-table">
-              <thead>
-                <tr>
-                  <th style="text-align: right; width: 50%;">الصنف</th>
-                  <th style="text-align: center; width: 20%;">الكمية</th>
-                  <th style="text-align: left; width: 30%;">المجموع</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${orderItems.map(item => `
-                  <tr>
-                    <td style="text-align: right;">${item.productNameSnapshot}</td>
-                    <td style="text-align: center;">${item.quantity}</td>
-                    <td style="text-align: left;">${item.lineTotal.toFixed(2)} ${bCurrency}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-
-            <div class="receipt-totals">
-              <div class="receipt-total-row"><span>الإجمالي الفرعي:</span><span>${subtotal.toFixed(2)} ${bCurrency}</span></div>
-              ${discount > 0 ? `<div class="receipt-total-row" style="color: red;"><span>الخصم:</span><span>-${discount.toFixed(2)} ${bCurrency}</span></div>` : ''}
-              ${tax > 0 ? `<div class="receipt-total-row"><span>ضريبة القيمة المضافة ${settings?.vatRate || 15}%:</span><span>${tax.toFixed(2)} ${bCurrency}</span></div>` : ''}
-              <div class="receipt-total-row receipt-grand-total"><span>الإجمالي الكلي (شامل الضريبة):</span><span>${total.toFixed(2)} ${bCurrency}</span></div>
-            </div>
-
-            <div class="receipt-totals" style="border-top: none; margin-top: 4px;">
-              <div class="receipt-total-row" style="font-weight: bold;"><span>طريقة الدفع:</span><span></span></div>
-              ${paymentsArray.map(p => `
-                <div class="receipt-total-row">
-                  <span>${p.method === 'cash' ? 'نقداً (كاش)' : 'مدى / فيزا (شبكة)'}:</span>
-                  <span>${p.amount.toFixed(2)} ${bCurrency}</span>
-                </div>
-              `).join('')}
-              ${method === 'cash' ? `
-                <div class="receipt-total-row"><span>المبلغ المدفوع:</span><span>${tenderedValue.toFixed(2)} ${bCurrency}</span></div>
-                <div class="receipt-total-row" style="font-weight: bold; color: green;"><span>المتبقي للعميل:</span><span>${changeDue.toFixed(2)} ${bCurrency}</span></div>
-              ` : ''}
-            </div>
-
-            ${qrCodeDataUrl ? `
-              <div class="qr-container">
-                <img src="${qrCodeDataUrl}" class="qr-code" />
-              </div>
-            ` : ''}
-
-            <div class="receipt-footer">
-              <p>${bFooter}</p>
-              <p style="margin-top: 4px; font-weight: bold;">فاتورة مبسطة خاضعة للمواصفات الضريبية</p>
-              <p>نظام كاشي لإدارة نقاط البيع Cashi POS</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-      setReceiptHTML(html);
-
-      // Kitchen receipt HTML template (prices hidden, large font)
-      const kitchenHTML = `
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700&display=swap');
-            @page {
-              margin: 0;
-            }
-            body {
-              margin: 0;
-              padding: 8px 12px;
-              font-family: 'Cairo', sans-serif;
-              background: white;
-              color: black;
-              direction: rtl;
-              text-align: right;
-            }
-            .kitchen-container {
-              width: 100%;
-              max-width: 270px;
-              margin: 0 auto;
-              font-size: 13px;
-              line-height: 1.4;
-            }
-            .text-center {
-              text-align: center;
-            }
-            .kitchen-header {
-              border-bottom: 2px solid black;
-              padding-bottom: 6px;
-              margin-bottom: 8px;
-            }
-            .kitchen-table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-            .kitchen-table th {
-              border-bottom: 2px solid black;
-              padding: 4px 0;
-              font-size: 12px;
-              font-weight: bold;
-            }
-            .kitchen-table td {
-              padding: 6px 0;
-              font-size: 14px;
-              font-weight: bold;
-              border-bottom: 1px solid #ccc;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="kitchen-container">
-            <div class="kitchen-header text-center">
-              <h2 style="margin: 0; font-size: 16px; font-weight: bold;">*** تذكرة المطبخ ***</h2>
-              <div style="font-size: 18px; font-weight: bold; margin: 4px 0; border: 2px solid black; padding: 4px; display: inline-block;">رقم الطلب: #${actualOrderNumber}</div>
-              <div style="font-size: 11px;">التاريخ: ${new Date().toLocaleString('ar-SA')}</div>
-              <div style="font-size: 12px; font-weight: bold; margin-top: 2px;">
-                النوع: ${
-                  orderType === 'dine_in' 
-                    ? 'داخلي (طاولة ' + (tableId || '') + ')' 
-                    : orderType === 'takeaway' 
-                    ? 'سفري / تطبيقات (' + (notes || '') + ')' 
-                    : 'توصيل'
-                }
-              </div>
-            </div>
-            <table class="kitchen-table">
-              <thead>
-                <tr>
-                  <th style="text-align: right; width: 70%;">الصنف</th>
-                  <th style="text-align: center; width: 30%;">الكمية</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${orderItems.map(item => `
-                  <tr>
-                    <td style="text-align: right;">${item.productNameSnapshot}</td>
-                    <td style="text-align: center; font-size: 18px;">${item.quantity}</td>
-                  </tr>
-                  ${item.notes ? `
-                    <tr>
-                      <td colspan="2" style="font-size: 12px; color: red; padding: 4px 0; font-weight: bold;">
-                        ⚠️ ملاحظة: ${item.notes}
-                      </td>
-                    </tr>
-                  ` : ''}
-                `).join('')}
-              </tbody>
-            </table>
-            <div style="text-align: center; font-size: 10px; margin-top: 15px; border-top: 1px dashed black; padding-top: 5px;">
-              نظام كاشي لإدارة نقاط البيع Cashi POS
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      // Print Customer receipt mock
-      await fetch("/api/print/receipt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: clientUuid, total, items: orderItems }),
-      });
-
-      // Print Kitchen ticket mock
-      await fetch("/api/print/kitchen", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: clientUuid, items: orderItems, tableId, orderType }),
-      });
-
-      // Automatic physical dual printing under Electron
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.isElectron) {
-        try {
-          // Print copy 1: Cashier/Customer full invoice
-          await electronAPI.printReceipt({ html });
-          // Print copy 2: Kitchen ticket
-          await electronAPI.printReceipt({ html: kitchenHTML });
-        } catch (printErr) {
-          console.error("Auto print failed:", printErr);
-        }
-      }
+      // Trigger print with real order number
+      await printReceiptMockAndPhysical(finalHtml, finalKitchenHtml, clientUuid, orderItems);
 
       setSuccess(true);
     } catch (e) {
-      console.error(e);
-      setError("فشل الاتصال بالخادم. سيتم تخزين الفاتورة في طابور الأوفلاين للتزامن.");
-      // Fallback local mock success for high resilience offline-first!
+      console.error("Sync or print failed, fallback to offline queue:", e);
+      setError("فشل الاتصال بالخادم. تم تخزين الفاتورة في طابور الأوفلاين للتزامن.");
+      
+      // Dispatch offline queue event to App.tsx
+      window.dispatchEvent(new CustomEvent("pos-offline-order-added", { detail: orderDoc }));
+
+      // Trigger local mock print with local HTML
+      try {
+        await printReceiptMockAndPhysical(html, kitchenHTML, clientUuid, orderItems);
+      } catch (err) {
+        console.error("Local preview print failed:", err);
+      }
+
       setSuccess(true);
     } finally {
       setLoading(false);
     }
+
   };
 
   const handlePrintAgain = async () => {

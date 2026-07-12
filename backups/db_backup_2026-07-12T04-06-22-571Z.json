@@ -1,0 +1,436 @@
+{
+  "settings": {
+    "businessNameAr": "دبل",
+    "businessNameEn": "Cashi",
+    "branchName": "",
+    "address": "",
+    "phone": "",
+    "taxNumber": "",
+    "currency": "ر.س",
+    "vatRate": 15,
+    "receiptFooter": "شكراً لزيارتكم! نتمنى لكم يوماً سعيداً",
+    "logoBase64": null,
+    "commercialReg": "",
+    "setupCompletedAt": "2026-07-11T15:53:28.916Z"
+  },
+  "users": [
+    {
+      "id": "u-1",
+      "fullName": "أحمد كاشير",
+      "username": "cashier",
+      "role": "cashier",
+      "pinSalt": "f7b01e22c9dfb75b334077b856837d11",
+      "pinHash": "0ba70e9df0c3e4666507caf10c5a3c982b0b4e0c2b2a255353c50b02f3d26e8a",
+      "passwordSalt": "f7b01e22c9dfb75b334077b856837d11",
+      "passwordHash": "0ba70e9df0c3e4666507caf10c5a3c982b0b4e0c2b2a255353c50b02f3d26e8a",
+      "isActive": true,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    },
+    {
+      "id": "u-2",
+      "fullName": "سليمان أدمن",
+      "username": "admin",
+      "role": "admin",
+      "pinSalt": "22dda20694194e02c9dbdeffde0e0376",
+      "pinHash": "85b2e6c30ca072d9eec3abc5fac7dcbb3a23cc83e3d0cfd8e3e8bba373b45d20",
+      "passwordSalt": "22dda20694194e02c9dbdeffde0e0376",
+      "passwordHash": "85b2e6c30ca072d9eec3abc5fac7dcbb3a23cc83e3d0cfd8e3e8bba373b45d20",
+      "isActive": true,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    },
+    {
+      "id": "u-3",
+      "fullName": "خالد مدير",
+      "username": "manager",
+      "role": "manager",
+      "pinSalt": "a1fdb95d33c9dbca80494d131b398ea3",
+      "pinHash": "50fc4c4b60593a7795356700c88f6857ce0cf0f05e17882cae592620af35cfba",
+      "passwordSalt": "a1fdb95d33c9dbca80494d131b398ea3",
+      "passwordHash": "50fc4c4b60593a7795356700c88f6857ce0cf0f05e17882cae592620af35cfba",
+      "isActive": true,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    },
+    {
+      "id": "u-4",
+      "fullName": "يوسف نادل",
+      "username": "waiter",
+      "role": "waiter",
+      "pinSalt": "dfc315d377c83f03b3963d1dbc6a8562",
+      "pinHash": "f45d8948a688a52a79220e0229cb558ced6670ad29c00824b0e50daca824a4a3",
+      "isActive": true,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    },
+    {
+      "id": "u-5",
+      "fullName": "سارة نادلة",
+      "username": "waiter2",
+      "role": "waiter",
+      "pinSalt": "c3969b6253c3e8fd237c4e7189a2ee1e",
+      "pinHash": "45fe33c59e862e0a3d0a4d101a5aaece30a2fe53e728454b497e8c831dac97bb",
+      "isActive": true,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "c-1",
+      "nameAr": "الأطباق الرئيسية",
+      "nameEn": "Main Dishes",
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "c-2",
+      "nameAr": "المقبلات والشوربات",
+      "nameEn": "Appetizers",
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "c-3",
+      "nameAr": "المشروبات الباردة",
+      "nameEn": "Cold Drinks",
+      "sortOrder": 3,
+      "isActive": true
+    },
+    {
+      "id": "c-4",
+      "nameAr": "المشروبات الساخنة",
+      "nameEn": "Hot Drinks",
+      "sortOrder": 4,
+      "isActive": true
+    },
+    {
+      "id": "c-5",
+      "nameAr": "الحلويات الشرقية",
+      "nameEn": "Desserts",
+      "sortOrder": 5,
+      "isActive": true
+    }
+  ],
+  "products": [
+    {
+      "id": "p-1",
+      "categoryId": "c-1",
+      "nameAr": "شاورما دجاج سوبر",
+      "nameEn": "Super Chicken Shawarma",
+      "description": "شاورما دجاج فاخرة مع الثوم والمخلل والبطاطس",
+      "price": 18,
+      "cost": 7,
+      "barcode": "62811001",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 83,
+      "image": null
+    },
+    {
+      "id": "p-2",
+      "categoryId": "c-1",
+      "nameAr": "كبسة لحم نعيمي غنم",
+      "nameEn": "Meat Kabsa",
+      "description": "أرز بسمتي مع لحم نعيمي طازج والمكسرات والبهارات",
+      "price": 55,
+      "cost": 25,
+      "barcode": "62811002",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 30,
+      "image": null
+    },
+    {
+      "id": "p-3",
+      "categoryId": "c-1",
+      "nameAr": "برجر دبل بقر بالجبن",
+      "nameEn": "Double Beef Burger",
+      "description": "شريحتين لحم بقري مشوي مع الجبن والخضار والصلصة المميزة",
+      "price": 24,
+      "cost": 11.5,
+      "barcode": "62811003",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 45,
+      "image": null
+    },
+    {
+      "id": "p-4",
+      "categoryId": "c-2",
+      "nameAr": "ورق عنب بالزيت والليمون",
+      "nameEn": "Stuffed Grape Leaves",
+      "description": "ورق عنب محشي أرز وخضروات مطبوخ بزيت الزيتون ودبس الرمان",
+      "price": 12,
+      "cost": 4,
+      "barcode": "62811004",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 100,
+      "image": null
+    },
+    {
+      "id": "p-5",
+      "categoryId": "c-2",
+      "nameAr": "حمص باللحم المفروم واللوز",
+      "nameEn": "Hummus with Meat",
+      "description": "حمص ناعم مغطى باللحم المفروم الساخن واللوز المحمص وزيت الزيتون",
+      "price": 15,
+      "cost": 6,
+      "barcode": "62811005",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 40,
+      "image": null
+    },
+    {
+      "id": "p-6",
+      "categoryId": "c-2",
+      "nameAr": "سلطة فتوش بالرمان",
+      "nameEn": "Fattoush Salad",
+      "description": "خضار طازجة مع قطع الخبز المقرمش ودبس الرمان السماق والليمون",
+      "price": 10,
+      "cost": 3,
+      "barcode": "62811006",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 60,
+      "image": null
+    },
+    {
+      "id": "p-7",
+      "categoryId": "c-3",
+      "nameAr": "بيبسي علبة بارد",
+      "nameEn": "Pepsi",
+      "description": "مشروب غازي بيبسي علبة 325 مل",
+      "price": 3,
+      "cost": 1.5,
+      "barcode": "62811007",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 200,
+      "image": null
+    },
+    {
+      "id": "p-8",
+      "categoryId": "c-3",
+      "nameAr": "عصير برتقال خلاط طازج",
+      "nameEn": "Fresh Orange Juice",
+      "description": "عصير برتقال طبيعي معصور طازج بدون سكر مضاف",
+      "price": 10,
+      "cost": 3.5,
+      "barcode": "62811008",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 80,
+      "image": null
+    },
+    {
+      "id": "p-9",
+      "categoryId": "c-3",
+      "nameAr": "مياه معدنية أروى صغيرة",
+      "nameEn": "Mineral Water",
+      "description": "مياه شرب معبأة مبردة 330 مل",
+      "price": 1.5,
+      "cost": 0.5,
+      "barcode": "62811009",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 500,
+      "image": null
+    },
+    {
+      "id": "p-10",
+      "categoryId": "c-4",
+      "nameAr": "شاي أحمر كبوس بالنعناع",
+      "nameEn": "Red Tea",
+      "description": "شاي أحمر ساخن محضر بالنعناع الطازج في الكوب",
+      "price": 2,
+      "cost": 0.4,
+      "barcode": "62811010",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 300,
+      "image": null
+    },
+    {
+      "id": "p-11",
+      "categoryId": "c-4",
+      "nameAr": "قهوة تركي بالحليب والهيل",
+      "nameEn": "Turkish Coffee",
+      "description": "قهوة تركية محضرة على الرمل مع الحليب والهيل المطحون",
+      "price": 7,
+      "cost": 1.8,
+      "barcode": "62811011",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 150,
+      "image": null
+    },
+    {
+      "id": "p-12",
+      "categoryId": "c-5",
+      "nameAr": "كنافة نابلسية بالجبن القشدي",
+      "nameEn": "Konafa",
+      "description": "كنافة ساخنة بالجبن النابلسي المطاطي والفستق والقطر",
+      "price": 12,
+      "cost": 5,
+      "barcode": "62811012",
+      "isActive": true,
+      "trackInventory": true,
+      "quantity": 35,
+      "image": null
+    }
+  ],
+  "restaurant_tables": [
+    {
+      "id": "t-1",
+      "nameAr": "طاولة 1 (عائلات)",
+      "nameEn": "Table 1 (Family)",
+      "seats": 4,
+      "status": "free"
+    },
+    {
+      "id": "t-2",
+      "nameAr": "طاولة 2 (شباب)",
+      "nameEn": "Table 2 (Single)",
+      "seats": 2,
+      "status": "free"
+    },
+    {
+      "id": "t-3",
+      "nameAr": "طاولة 3 (عائلات)",
+      "nameEn": "Table 3 (Family)",
+      "seats": 6,
+      "status": "free"
+    },
+    {
+      "id": "t-4",
+      "nameAr": "طاولة 4 (شباب)",
+      "nameEn": "Table 4 (Single)",
+      "seats": 4,
+      "status": "free"
+    },
+    {
+      "id": "t-5",
+      "nameAr": "طاولة 5 (شباب)",
+      "nameEn": "Table 5 (Single)",
+      "seats": 2,
+      "status": "free"
+    }
+  ],
+  "orders": [
+    {
+      "id": "test-uuid-1783780808000",
+      "shiftId": "sh-1783319993258",
+      "cashierId": "u-1",
+      "cashierName": "أحمد كاشير",
+      "orderType": "dine_in",
+      "tableId": "t-1",
+      "items": [
+        {
+          "productId": "p-1",
+          "productNameSnapshot": "شاورما دجاج سوبر",
+          "quantity": 2,
+          "unitPrice": 18,
+          "lineTotal": 36
+        }
+      ],
+      "subtotal": 36,
+      "discountAmount": 0,
+      "taxAmount": 4.6956521739130395,
+      "total": 36,
+      "payments": [
+        {
+          "method": "cash",
+          "amount": 36
+        }
+      ],
+      "ignoreShiftValidation": true,
+      "orderNumber": 1,
+      "syncedAt": "2026-07-11T14:40:08.005Z"
+    }
+  ],
+  "held_orders": [],
+  "shifts": [
+    {
+      "id": "s-1783785215081",
+      "shiftNumber": 1,
+      "openedAt": "2026-07-11T15:53:35.081Z",
+      "openingCash": 50,
+      "cashierId": "u-2",
+      "cashierName": "سليمان أدمن",
+      "status": "open"
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust-1",
+      "name": "عميل نقدي افتراضي",
+      "phone": "0500000000",
+      "email": "",
+      "points": 0,
+      "createdAt": "2026-07-11T14:39:38.376Z"
+    }
+  ],
+  "inventory_items": [],
+  "inventory_transactions": [
+    {
+      "id": "it-1783780808005-vaurm",
+      "inventoryItemId": "p-1",
+      "changeQty": -2,
+      "reason": "فاتورة بيع رقم 1",
+      "orderId": "test-uuid-1783780808000",
+      "createdBy": "u-1",
+      "createdAt": "2026-07-11T14:40:08.005Z"
+    }
+  ],
+  "recipes": [],
+  "print_jobs": [],
+  "audit_logs": [
+    {
+      "id": "audit-1783780807990-8w90z",
+      "action": "دخول الكاشير",
+      "userId": "u-1",
+      "userName": "أحمد كاشير",
+      "details": "تسجيل دخول ناجح للمحطة بالرمز السريع",
+      "createdAt": "2026-07-11T14:40:07.990Z"
+    },
+    {
+      "id": "audit-1783780808005-qbl10",
+      "action": "إصدار فاتورة",
+      "userId": "u-1",
+      "userName": "أحمد كاشير",
+      "details": "تم إصدار الفاتورة رقم #1 بقيمة إجمالية: 36 ر.س (داخلي)",
+      "createdAt": "2026-07-11T14:40:08.005Z"
+    },
+    {
+      "id": "audit-1783785212401-5snqg",
+      "action": "دخول الكاشير",
+      "userId": "u-2",
+      "userName": "سليمان أدمن",
+      "details": "تسجيل دخول ناجح للمحطة بالرمز السريع",
+      "createdAt": "2026-07-11T15:53:32.401Z"
+    },
+    {
+      "id": "audit-1783785215081-nho92",
+      "action": "فتح وردية",
+      "userId": "u-2",
+      "userName": "سليمان أدمن",
+      "details": "تم فتح الوردية رقم #1 برصيد افتتاحي: 50 ر.س",
+      "createdAt": "2026-07-11T15:53:35.081Z"
+    },
+    {
+      "id": "audit-1783785346656-9zwff",
+      "action": "دخول الكاشير",
+      "userId": "u-2",
+      "userName": "سليمان أدمن",
+      "details": "تسجيل دخول ناجح للمحطة بالرمز السريع",
+      "createdAt": "2026-07-11T15:55:46.656Z"
+    },
+    {
+      "id": "audit-1783785629332-fh1r5",
+      "action": "دخول الكاشير",
+      "userId": "u-2",
+      "userName": "سليمان أدمن",
+      "details": "تسجيل دخول ناجح للمحطة بالرمز السريع",
+      "createdAt": "2026-07-11T16:00:29.332Z"
+    }
+  ]
+}

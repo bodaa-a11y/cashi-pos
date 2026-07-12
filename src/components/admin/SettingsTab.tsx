@@ -13,6 +13,11 @@ interface SettingsTabProps {
     vatRate: number;
     receiptFooter: string;
     logoBase64: string;
+    commercialReg?: string;
+    cloudSyncEnabled?: boolean;
+    cloudApiUrl?: string;
+    cloudAuthToken?: string;
+    branchId?: string;
   };
   setSettingsForm: React.Dispatch<React.SetStateAction<any>>;
   handleSaveSettings: (e: React.FormEvent) => Promise<void>;
@@ -78,7 +83,7 @@ export default function SettingsTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-bold text-stone-700 mb-1">اسم الفرع</label>
             <input
@@ -107,6 +112,17 @@ export default function SettingsTab({
               value={settingsForm.taxNumber}
               onChange={(e) => setSettingsForm({ ...settingsForm, taxNumber: e.target.value })}
               placeholder="الرقم الضريبي للمنشأة..."
+              dir="ltr"
+              className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">رقم السجل التجاري CR</label>
+            <input
+              type="text"
+              value={settingsForm.commercialReg || ""}
+              onChange={(e) => setSettingsForm({ ...settingsForm, commercialReg: e.target.value })}
+              placeholder="سجل المنشأة التجاري..."
               dir="ltr"
               className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
             />

@@ -603,9 +603,12 @@ export class PrinterManager {
    */
   async fallbackPrint(html: string, parentWindow: BrowserWindow): Promise<boolean> {
     return new Promise((resolve, reject) => {
+      const paperW = this.printerConfig?.paperWidth ?? 80;
       const printWindow = new BrowserWindow({
         show: false,
         parent: parentWindow,
+        width: paperW === 80 ? 302 : 220, // ~80mm or ~58mm at 96 DPI
+        height: 900,
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
@@ -617,30 +620,36 @@ export class PrinterManager {
       );
 
       printWindow.webContents.on('did-finish-load', () => {
-        const printOptions: Electron.WebContentsPrintOptions = {
-          silent: true,
-          printBackground: true,
-          deviceName: this.printerConfig?.printerName || undefined,
-          margins: {
-            marginType: 'none',
-          },
-          pageSize: {
-            width: (this.printerConfig?.paperWidth ?? 80) * 1000,
-            height: 297000,
-          },
-        };
+        // تأخير قصير لضمان تحميل الخطوط والصور (مثل QR Code) قبل الطباعة
+        setTimeout(() => {
+          const printOptions: Electron.WebContentsPrintOptions = {
+            silent: true,
+            printBackground: true,
+            deviceName: this.printerConfig?.printerName || undefined,
+            margins: {
+              marginType: 'none',
+            },
+            // حجم الصفحة بالميكرومتر — عرض الورقة الحرارية وارتفاع طويل بما يكفي
+            pageSize: {
+              width: paperW * 1000,       // 80mm = 80000µm or 58mm = 58000µm
+              height: 3000 * 1000,        // 3 متر — يكفي لأي إيصال (الطابعة تقص تلقائياً)
+            },
+          };
 
-        printWindow.webContents.print(printOptions, (success, failureReason) => {
-          printWindow.close();
+          printWindow.webContents.print(printOptions, (success, failureReason) => {
+            if (!printWindow.isDestroyed()) {
+              printWindow.close();
+            }
 
-          if (success) {
-            console.log('[كاشي طباعة] ✅ تمت الطباعة الاحتياطية بنجاح');
-            resolve(true);
-          } else {
-            console.error('[كاشي طباعة] ❌ فشلت الطباعة الاحتياطية:', failureReason);
-            reject(new Error(`فشلت الطباعة: ${failureReason}`));
-          }
-        });
+            if (success) {
+              console.log('[كاشي طباعة] ✅ تمت الطباعة الاحتياطية بنجاح');
+              resolve(true);
+            } else {
+              console.error('[كاشي طباعة] ❌ فشلت الطباعة الاحتياطية:', failureReason);
+              reject(new Error(`فشلت الطباعة: ${failureReason}`));
+            }
+          });
+        }, 800); // 800ms تأخير لضمان تحميل الخطوط وصورة QR
       });
 
       setTimeout(() => {
@@ -648,7 +657,7 @@ export class PrinterManager {
           printWindow.close();
         }
         reject(new Error('مهلة الطباعة انتهت'));
-      }, 10000);
+      }, 15000);
     });
   }
 

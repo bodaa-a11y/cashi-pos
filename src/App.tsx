@@ -137,8 +137,24 @@ function CashiApp() {
       setIsOnline(false);
     };
 
+    const handleLogoutEvent = () => {
+      handleLogout();
+    };
+
+    const handleOfflineOrderAdded = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const newOrder = customEvent.detail;
+      setOfflineOrders(prev => {
+        const updated = [...prev, newOrder];
+        localStorage.setItem("pos_offline_orders", JSON.stringify(updated));
+        return updated;
+      });
+    };
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    window.addEventListener("pos-logout", handleLogoutEvent);
+    window.addEventListener("pos-offline-order-added", handleOfflineOrderAdded);
 
     setIsOnline(navigator.onLine);
 
@@ -150,6 +166,8 @@ function CashiApp() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("pos-logout", handleLogoutEvent);
+      window.removeEventListener("pos-offline-order-added", handleOfflineOrderAdded);
     };
   }, []);
 

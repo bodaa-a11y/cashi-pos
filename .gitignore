@@ -3,9 +3,11 @@ build/
 dist/
 dist-electron/
 release/
-db.json
+# db.json
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+scripts/
+
