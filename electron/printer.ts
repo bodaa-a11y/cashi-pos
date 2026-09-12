@@ -16,6 +16,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
 import os from 'os';
+import net from 'net';
 
 const require = createRequire(import.meta.url);
 
@@ -605,6 +606,53 @@ export class PrinterManager {
   }
 
   // ═══════════════════════════════════════════════════════
+  //  إرسال بيانات خام عبر الشبكة TCP (بورت 9100)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * إرسال بيانات خام مباشرة لطابعة الشبكة عبر TCP Socket (Port 9100)
+   * @param address عنوان IP الطابعة مع أو بدون المنفذ (مثال: 192.168.1.100 أو 192.168.1.100:9100)
+   * @param data بايتات الأوامر الخام
+   * @returns true إذا تم الإرسال بنجاح
+   */
+  private async sendRawToNetworkPrinter(address: string, data: Buffer): Promise<boolean> {
+    return new Promise((resolve) => {
+      let host = address.trim();
+      let port = 9100;
+      if (host.includes(':')) {
+        const [h, p] = host.split(':');
+        host = h;
+        port = parseInt(p, 10) || 9100;
+      }
+      const socket = new net.Socket();
+      socket.setTimeout(8000);
+      socket.once('error', (err) => {
+        console.error('[كاشي طباعة] ❌ خطأ في اتصال الشبكة بالطابعة:', err);
+        try { socket.destroy(); } catch {}
+        resolve(false);
+      });
+      socket.once('timeout', () => {
+        console.error('[كاشي طباعة] ❌ انتهت مهلة الاتصال بطابعة الشبكة');
+        try { socket.destroy(); } catch {}
+        resolve(false);
+      });
+      socket.connect(port, host, () => {
+        socket.write(data, (err) => {
+          if (err) {
+            console.error('[كاشي طباعة] ❌ خطأ أثناء إرسال البيانات لطابعة الشبكة:', err);
+            try { socket.destroy(); } catch {}
+            return resolve(false);
+          }
+          socket.end(() => {
+            console.log(`[كاشي طباعة] ✅ تم إرسال ${data.length} بايت بنجاح لطابعة الشبكة (${host}:${port})`);
+            resolve(true);
+          });
+        });
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════
   //  الطباعة الخام عبر Win32 API (بدون درايفر رسومي)
   // ═══════════════════════════════════════════════════════
 
@@ -706,19 +754,12 @@ try {
   }
 
   // ═══════════════════════════════════════════════════════
-  //  طباعة HTML كصورة Raster (للطابعات الحرارية USB)
+  //  طباعة HTML كصورة Raster (للطابعات الحرارية USB والشبكة)
   // ═══════════════════════════════════════════════════════
 
   /**
    * تحويل محتوى HTML لصورة وإرسالها كأوامر ESC/POS raster مباشرة
-   * هذه الطريقة لا تحتاج درايفر رسومي — تعمل مع أي طابعة حرارية ESC/POS
-   *
-   * الخطوات:
-   * 1. فتح نافذة مخفية وتحميل HTML الفاتورة
-   * 2. التقاط الصفحة كصورة
-   * 3. تحويل الصورة لـ bitmap أبيض وأسود (monochrome)
-   * 4. ترميز البيانات بصيغة ESC/POS raster (أمر GS v 0)
-   * 5. إرسال البيانات الخام مباشرة للطابعة عبر Win32 API
+   * تدعم طابعات الـ USB وطابعات الشبكة مع تطبيق Floyd-Steinberg Dithering
    *
    * @param html محتوى HTML الإيصال
    * @param parentWindow النافذة الأم
@@ -727,9 +768,10 @@ try {
   async printHtmlAsRaster(html: string, parentWindow: BrowserWindow): Promise<boolean> {
     const config = this.printerConfig;
     const paperW = config?.paperWidth ?? 80;
-    const printerName = config?.printerName?.trim();
 
-    if (!printerName) {
+    const isNetwork = config?.interface === 'network';
+    const printerName = config?.printerName?.trim();
+    if (!isNetwork && !printerName) {
       throw new Error('اسم الطابعة غير محدد في الإعدادات');
     }
 
@@ -749,27 +791,31 @@ try {
         contextIsolation: true,
         nodeIntegration: false,
         offscreen: true,
+        backgroundThrottling: false, // منع تجميد الرسم في الخلفية
       },
     });
 
     try {
-      // تحميل HTML الإيصال
+      renderWindow.webContents.setBackgroundThrottling(false);
       await renderWindow.loadURL(
         `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
       );
 
-      // انتظار اكتمال تحميل الخطوط والعناصر
-      await new Promise((r) => setTimeout(r, 800));
+      // انتظار اكتمال تحميل الخطوط فعلياً بدل مجرد timeout ثابت
+      await renderWindow.webContents.executeJavaScript(
+        `document.fonts ? document.fonts.ready.then(() => true) : true`
+      ).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
 
       // قياس الارتفاع الفعلي للمحتوى
       const scrollHeight: number = await renderWindow.webContents.executeJavaScript(
         `Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0, 350)`
       );
 
-      // ضبط حجم النافذة لتطابق المحتوى
-      const captureHeight = Math.min(scrollHeight + 30, 5000);
+      const captureHeight = Math.min(scrollHeight + 30, 8000);
       renderWindow.setContentSize(printableWidthPx, captureHeight);
-      await new Promise((r) => setTimeout(r, 400));
+      renderWindow.webContents.setFrameRate(60); // إجبار إعادة الرسم وتفادي الإطار الأسود
+      await new Promise((r) => setTimeout(r, 500));
 
       // التقاط صورة الإيصال كاملاً
       const image = await renderWindow.webContents.capturePage({
@@ -782,37 +828,43 @@ try {
       if (!renderWindow.isDestroyed()) renderWindow.close();
 
       const size = image.getSize();
-      if (size.width === 0 || size.height === 0) {
+      if (!size.width || !size.height) {
         throw new Error('فشل التقاط صورة الإيصال — الصورة فارغة');
       }
 
       console.log(`[كاشي طباعة] 📸 تم التقاط صورة الإيصال: ${size.width}×${size.height}px`);
 
-      // الحصول على بيانات البكسل الخام (RGBA)
-      const bitmap = image.toBitmap();
+      // ── Floyd–Steinberg dithering لنعومة الخطوط العربية ومنع التسنن والتشوه ──
+      const bmp = image.toBitmap();
+      const W = size.width;
+      const H = size.height;
+      const gray = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) {
+        const j = i * 4;
+        gray[i] = 0.299 * bmp[j] + 0.587 * bmp[j + 1] + 0.114 * bmp[j + 2];
+      }
 
-      // تحويل الصورة إلى أبيض وأسود وترميزها كـ ESC/POS raster
-      const widthBytes = Math.ceil(size.width / 8);
-      const rasterData = Buffer.alloc(widthBytes * size.height);
+      const widthBytes = Math.ceil(W / 8);
+      const rasterData = Buffer.alloc(widthBytes * H);
+      const pushErr = (i: number, err: number) => {
+        if (i < gray.length) gray[i] += err;
+      };
 
-      for (let y = 0; y < size.height; y++) {
-        for (let xByte = 0; xByte < widthBytes; xByte++) {
-          let byteVal = 0;
-          for (let bit = 0; bit < 8; bit++) {
-            const x = xByte * 8 + bit;
-            if (x < size.width) {
-              const idx = (y * size.width + x) * 4; // RGBA format
-              const r = bitmap[idx];
-              const g = bitmap[idx + 1];
-              const b = bitmap[idx + 2];
-              // تحويل لدرجة رمادية — البكسل الداكن = 1 (طباعة)
-              const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-              if (gray < 128) {
-                byteVal |= 0x80 >> bit;
-              }
-            }
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          const old = gray[i];
+          const nw = old < 128 ? 0 : 255;
+          const e = old - nw;
+          if (nw === 0) {
+            rasterData[y * widthBytes + (x >> 3)] |= 0x80 >> (x & 7);
           }
-          rasterData[y * widthBytes + xByte] = byteVal;
+          if (x + 1 < W) pushErr(i + 1, (e * 7) / 16);
+          if (y + 1 < H) {
+            if (x > 0) pushErr(i + W - 1, (e * 3) / 16);
+            pushErr(i + W, (e * 5) / 16);
+            if (x + 1 < W) pushErr(i + W + 1, (e * 1) / 16);
+          }
         }
       }
 
@@ -822,8 +874,8 @@ try {
         0x1d, 0x76, 0x30, 0x00, // GS v 0 m=0 — طباعة صورة raster
         widthBytes & 0xff,
         (widthBytes >> 8) & 0xff, // xL xH — عرض الصورة بالبايت
-        size.height & 0xff,
-        (size.height >> 8) & 0xff, // yL yH — ارتفاع الصورة بالنقاط
+        H & 0xff,
+        (H >> 8) & 0xff, // yL yH — ارتفاع الصورة بالنقاط
       ]);
 
       const footer = Buffer.from([
@@ -834,11 +886,15 @@ try {
       const fullData = Buffer.concat([header, rasterData, footer]);
 
       console.log(
-        `[كاشي طباعة] 🖨️ إرسال ${fullData.length} بايت raster للطابعة: ${printerName}`
+        `[كاشي طباعة] 🖨️ إرسال ${fullData.length} بايت raster للطابعة (${isNetwork ? 'Network: ' + config?.networkAddress : 'USB: ' + printerName})`
       );
 
-      // إرسال البيانات الخام مباشرة للطابعة
-      const success = await this.sendRawToWinPrinter(printerName, fullData);
+      let success: boolean;
+      if (isNetwork) {
+        success = await this.sendRawToNetworkPrinter(config!.networkAddress || '', fullData);
+      } else {
+        success = await this.sendRawToWinPrinter(printerName!, fullData);
+      }
 
       if (success) {
         console.log('[كاشي طباعة] ✅ تمت طباعة الإيصال كصورة raster بنجاح!');

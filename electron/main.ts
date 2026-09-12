@@ -50,6 +50,9 @@ const PRINTER_CONFIG_PATH = path.join(
   'printer-config.json'
 );
 
+// تعطيل تسريع العتاد لمنع الإطارات السوداء عند التقاط الصور للطباعة الحرارية
+app.disableHardwareAcceleration();
+
 // ─── قفل النسخة الواحدة ──────────────────────────────────────
 // منع تشغيل أكثر من نسخة واحدة من التطبيق في نفس الوقت
 const gotTheLock = app.requestSingleInstanceLock();
@@ -322,29 +325,18 @@ function registerIPCHandlers(): void {
   // ─── طباعة الإيصال ─────────────────────────────────────
   ipcMain.handle('print-receipt', async (_event, data) => {
     try {
-      const config = printerManager.getConfig();
-
-      // إذا كانت الطابعة طابعة شبكة (Network Ethernet/IP)، نحاول إرسال أوامر ESC/POS المباشرة أولاً
-      if (config?.interface === 'network' && data?.structuredData && printerManager.isThermalConfigured()) {
+      if (data?.html && mainWindow && !mainWindow.isDestroyed()) {
         try {
-          const result = await printerManager.printReceipt(data.structuredData);
-          console.log('✅ [كاشي] استُخدمت الطباعة الحرارية المباشرة عبر الشبكة ESC/POS');
+          const result = await printerManager.printHtmlAsRaster(data.html, mainWindow);
           return { success: result };
-        } catch (netErr) {
-          console.warn('[كاشي] ⚠️ تعذر الإرسال المباشر للشبكة، جاري التحويل للطباعة عبر ويندوز:', netErr);
-        }
-      }
-
-      // لطابعات USB ونظام ويندوز: الطباعة عبر محرك HTML المصمم خصيصاً للإيصالات الحرارية
-      if (data && data.html) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        } catch (rasterErr) {
+          console.warn('[كاشي] ⚠️ فشل raster، جاري الطباعة الاحتياطية:', rasterErr);
           const result = await printerManager.fallbackPrint(data.html, mainWindow);
           return { success: result };
         }
       }
 
-      // في حال لم يتوفر محتوى HTML
-      if (data && data.structuredData) {
+      if (data?.structuredData) {
         const result = await printerManager.printReceipt(data.structuredData);
         return { success: result };
       }
@@ -363,28 +355,18 @@ function registerIPCHandlers(): void {
   // ─── طباعة تذكرة المطبخ ────────────────────────────────
   ipcMain.handle('print-kitchen', async (_event, data) => {
     try {
-      const config = printerManager.getConfig();
-
-      // إذا كانت الطابعة عبر الشبكة
-      if (config?.interface === 'network' && data?.structuredData && printerManager.isThermalConfigured()) {
+      if (data?.html && mainWindow && !mainWindow.isDestroyed()) {
         try {
-          const result = await printerManager.printKitchenTicket(data.structuredData);
-          console.log('✅ [كاشي] استُخدمت الطباعة الحرارية المباشرة للمطبخ عبر الشبكة');
+          const result = await printerManager.printHtmlAsRaster(data.html, mainWindow);
           return { success: result };
-        } catch (netErr) {
-          console.warn('[كاشي] ⚠️ تعذر الإرسال المباشر لطابعة المطبخ عبر الشبكة، جاري التحويل للطباعة عبر ويندوز:', netErr);
-        }
-      }
-
-      // الطباعة عبر محرك HTML لتذكرة المطبخ
-      if (data && data.html) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        } catch (rasterErr) {
+          console.warn('[كاشي] ⚠️ فشل raster للمطبخ، جاري الطباعة الاحتياطية:', rasterErr);
           const result = await printerManager.fallbackPrint(data.html, mainWindow);
           return { success: result };
         }
       }
 
-      if (data && data.structuredData) {
+      if (data?.structuredData) {
         const result = await printerManager.printKitchenTicket(data.structuredData);
         return { success: result };
       }
