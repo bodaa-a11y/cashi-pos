@@ -78,7 +78,9 @@ import {
   Sliders,
   Store,
   ShoppingBag,
-  UserCheck
+  UserCheck,
+  FileText,
+  Radio
 } from "lucide-react";
 import {
   BarChart,
@@ -96,6 +98,8 @@ import { Category, Product, RestaurantTable, User, Shift } from "../types";
 import PurchasingTab from "./admin/PurchasingTab";
 import CustomersTab from "./admin/CustomersTab";
 import FinancesTab from "./admin/FinancesTab";
+import EndOfDayReport from "./EndOfDayReport";
+import LiveStatus from "./LiveStatus";
 
 interface AdminDashboardProps {
   onBack: () => void;
@@ -105,7 +109,7 @@ interface AdminDashboardProps {
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"];
 
 export default function AdminDashboard({ onBack, currentUser }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "menu" | "tables" | "staff" | "inventory" | "shifts" | "reports" | "settings" | "audit" | "purchasing" | "customers" | "finances">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "eod" | "live" | "menu" | "tables" | "staff" | "inventory" | "shifts" | "reports" | "settings" | "audit" | "purchasing" | "customers" | "finances">("overview");
   const [purchaseRequestItemId, setPurchaseRequestItemId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "custom">("month");
   const [customFromDate, setCustomFromDate] = useState<string>("");
@@ -1131,6 +1135,24 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           >
             <TrendingUp className="w-4 h-4" />
             <span>نظرة عامة والتحليلات</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("live")}
+            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
+              activeTab === "live" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+            }`}
+          >
+            <Radio className="w-4 h-4 text-emerald-600" />
+            <span>المراقبة اللحظية (مباشر)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("eod")}
+            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
+              activeTab === "eod" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+            }`}
+          >
+            <FileText className="w-4 h-4 text-[#2E7D32]" />
+            <span>تقرير نهاية اليوم الشامل</span>
           </button>
           <button
             onClick={() => setActiveTab("menu")}
@@ -2679,6 +2701,14 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
               </div>
 
             </div>
+          )}
+
+          {activeTab === "live" && (
+            <LiveStatus />
+          )}
+
+          {activeTab === "eod" && (
+            <EndOfDayReport />
           )}
 
         </main>
