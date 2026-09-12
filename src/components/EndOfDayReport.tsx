@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FileText, Printer, RefreshCw, Calendar, TrendingUp,
   Banknote, CreditCard, Package, Users, Clock, Receipt,
@@ -19,14 +19,21 @@ export default function EndOfDayReport() {
     setError("");
     try {
       const token = localStorage.getItem("pos_token");
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`/api/reports/end-of-day?date=${d}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
-      const json = await res.json();
-      if (res.ok) setData(json);
-      else setError(json.error || "فشل تحميل التقرير");
-    } catch (e) {
-      setError("حدث خطأ أثناء الاتصال بالخادم");
+      const json = await res.json().catch(() => null);
+      if (res.ok && json) {
+        setData(json);
+      } else {
+        setError((json && json.error) || `فشل تحميل التقرير (رمز الاستجابة ${res.status})`);
+      }
+    } catch (e: any) {
+      console.error("EndOfDay fetch error:", e);
+      setError("حدث خطأ أثناء الاتصال بالخادم: " + (e?.message || "يرجى التحقق من الشبكة"));
     } finally {
       setLoading(false);
     }

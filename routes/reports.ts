@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import { readDB } from "../db/db";
 import { authenticate } from "../middleware/authenticate";
 
@@ -28,140 +28,163 @@ function ordersOfDay(db: any, dateStr: string) {
 // تقرير نهاية اليوم الشامل — كل الأصناف وكل قسم لوحده
 // GET /api/reports/end-of-day?date=YYYY-MM-DD
 // ═══════════════════════════════════════════════════════
-router.get("/api/reports/end-of-day", authenticate(["admin", "manager"]), (req, res) => {
-  const date = String(req.query.date || new Date().toISOString().split("T")[0]);
-  const db = readDB();
-  const orders = ordersOfDay(db, date);
+// ═══════════════════════════════════════════════════════
+// تقرير نهاية اليوم الشامل — كل الأصناف وكل قسم لوحده
+// GET /api/reports/end-of-day?date=YYYY-MM-DD
+// ═══════════════════════════════════════════════════════
+router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier"]), (req, res) => {
+  try {
+    const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+    const db = readDB();
+    const orders = ordersOfDay(db, date);
 
-  let totalSales = 0, totalTax = 0, totalDiscount = 0, totalRefunded = 0;
-  let cashSales = 0, cardSales = 0, otherSales = 0, totalCost = 0;
+    let totalSales = 0, totalTax = 0, totalDiscount = 0, totalRefunded = 0;
+    let cashSales = 0, cardSales = 0, otherSales = 0, totalCost = 0;
 
-  const cashierMap: any = {};
-  const hourlyMap: any = {};
-  const catMap: any = {};
+    const cashierMap: any = {};
+    const hourlyMap: any = {};
+    const catMap: any = {};
 
-  for (const o of orders) {
-    const refundRatio = o.total ? 1 - (o.refundedAmount || 0) / o.total : 1;
-    const net = r2((o.total || 0) - (o.refundedAmount || 0));
-    totalSales += net;
-    totalTax += (o.taxAmount || 0) * refundRatio;
-    totalDiscount += o.discountAmount || 0;
-    totalRefunded += o.refundedAmount || 0;
+    for (const o of orders) {
+      const orderTotal = Number(o.total) || 0;
+      const orderRefunded = Number(o.refundedAmount) || 0;
+      const refundRatio = orderTotal > 0 ? Math.max(0, 1 - orderRefunded / orderTotal) : 1;
+      const net = r2(orderTotal - orderRefunded);
+      totalSales += net;
+      totalTax += (Number(o.taxAmount) || 0) * refundRatio;
+      totalDiscount += Number(o.discountAmount) || 0;
+      totalRefunded += orderRefunded;
 
-    (o.payments || []).forEach((p: any) => {
-      const amt = r2(p.amount * refundRatio);
-      if (p.method === "cash") cashSales += amt;
-      else if (p.method === "card") cardSales += amt;
-      else otherSales += amt;
+      (o.payments || []).forEach((p: any) => {
+        const amt = r2((Number(p.amount) || 0) * refundRatio);
+        if (p.method === "cash") cashSales += amt;
+        else if (p.method === "card") cardSales += amt;
+        else otherSales += amt;
+      });
+
+      // أداء الكاشير
+      const cashierId = o.cashierId || "unknown";
+      if (!cashierMap[cashierId]) {
+        cashierMap[cashierId] = { id: cashierId, name: o.cashierName || "كاشير", orders: 0, sales: 0 };
+      }
+      cashierMap[cashierId].orders++;
+      cashierMap[cashierId].sales = r2(cashierMap[cashierId].sales + net);
+
+      // المبيعات بالساعة
+      const orderDate = new Date(o.createdAt);
+      const h = isNaN(orderDate.getTime()) ? 0 : orderDate.getHours();
+      const hourKey = `${String(h).padStart(2, "0")}:00`;
+      if (!hourlyMap[hourKey]) hourlyMap[hourKey] = { sales: 0, orders: 0 };
+      hourlyMap[hourKey].sales = r2(hourlyMap[hourKey].sales + net);
+      hourlyMap[hourKey].orders++;
+
+      // الأصناف حسب القسم (التصنيف)
+      for (const item of o.items || []) {
+        const itemQty = Number(item.quantity) || 0;
+        const itemRefundedQty = Number(item.refundedQuantity) || 0;
+        const activeQty = itemQty - itemRefundedQty;
+        if (activeQty <= 0) continue;
+
+        const prod = (db.products || []).find((p: any) => p.id === item.productId);
+        const catId = prod ? prod.categoryId : (item.categoryId || "other");
+        if (!catMap[catId]) {
+          const cat = (db.categories || []).find((c: any) => c.id === catId);
+          catMap[catId] = {
+            id: catId,
+            name: cat ? (cat.nameAr || cat.nameEn) : (catId === "c-5" ? "شاورما" : catId === "c-1" ? "بيتزا" : "أخرى"),
+            items: {},
+            qty: 0, sales: 0, cost: 0, profit: 0,
+          };
+        }
+
+        const unitPrice = Number(item.unitPrice) || 0;
+        const itemCostPrice = Number(prod?.cost) || 0;
+        const itemSales = r2(unitPrice * activeQty);
+        const itemCost = r2(itemCostPrice * activeQty);
+        const key = item.productId || item.productNameSnapshot || `item-${Math.random()}`;
+
+        if (!catMap[catId].items[key]) {
+          catMap[catId].items[key] = {
+            name: item.productNameSnapshot || prod?.nameAr || prod?.nameEn || "صنف",
+            qty: 0, sales: 0, cost: 0, profit: 0,
+          };
+        }
+
+        const it = catMap[catId].items[key];
+        it.qty += activeQty;
+        it.sales = r2(it.sales + itemSales);
+        it.cost = r2(it.cost + itemCost);
+        it.profit = r2(it.sales - it.cost);
+
+        const c = catMap[catId];
+        c.qty += activeQty;
+        c.sales = r2(c.sales + itemSales);
+        c.cost = r2(c.cost + itemCost);
+        c.profit = r2(c.sales - c.cost);
+        totalCost += itemCost;
+      }
+    }
+
+    const categories = Object.values(catMap)
+      .map((c: any) => ({ ...c, items: Object.values(c.items).sort((a: any, b: any) => b.sales - a.sales) }))
+      .sort((a: any, b: any) => b.sales - a.sales);
+
+    const expenses = (db.expenses || []).filter((e: any) => e.date === date);
+    const totalExpenses = r2(expenses.reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0));
+
+    const { from, to } = dayRange(date);
+    const shifts = (db.shifts || [])
+      .filter((s: any) => {
+        const d = new Date(s.openedAt);
+        return !isNaN(d.getTime()) && d >= from && d <= to;
+      })
+      .map((s: any) => ({
+        id: s.id,
+        shiftNumber: s.shiftNumber,
+        cashierName: s.cashierName,
+        openedAt: s.openedAt,
+        closedAt: s.closedAt || null,
+        status: s.status,
+        openingCash: Number(s.openingCash) || 0,
+        actualCash: s.actualCash != null ? Number(s.actualCash) : (s.closingCash != null ? Number(s.closingCash) : null),
+        expectedCash: s.expectedCash != null ? Number(s.expectedCash) : null,
+        cashDifference: s.cashDifference != null ? Number(s.cashDifference) : null,
+      }));
+
+    const topItems = categories
+      .flatMap((c: any) => c.items.map((i: any) => ({ ...i, category: c.name })))
+      .sort((a: any, b: any) => b.qty - a.qty)
+      .slice(0, 10);
+
+    return res.json({
+      date,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        orderCount: orders.length,
+        totalSales: r2(totalSales),
+        totalRefunded: r2(totalRefunded),
+        totalTax: r2(totalTax),
+        totalDiscount: r2(totalDiscount),
+        cashSales: r2(cashSales),
+        cardSales: r2(cardSales),
+        otherSales: r2(otherSales),
+        avgOrderValue: orders.length ? r2(totalSales / orders.length) : 0,
+        grossCost: r2(totalCost),
+        grossProfit: r2(totalSales - totalCost),
+        totalExpenses,
+        netProfit: r2(totalSales - totalCost - totalExpenses),
+      },
+      categories,
+      cashiers: Object.values(cashierMap).sort((a: any, b: any) => b.sales - a.sales),
+      hourly: Object.keys(hourlyMap).sort().map((k) => ({ hour: k, ...hourlyMap[k] })),
+      expenses,
+      shifts,
+      topItems,
     });
-
-    // أداء الكاشير
-    const cashierId = o.cashierId || "unknown";
-    if (!cashierMap[cashierId]) {
-      cashierMap[cashierId] = { id: cashierId, name: o.cashierName || "كاشير", orders: 0, sales: 0 };
-    }
-    cashierMap[cashierId].orders++;
-    cashierMap[cashierId].sales = r2(cashierMap[cashierId].sales + net);
-
-    // المبيعات بالساعة
-    const h = new Date(o.createdAt).getHours();
-    const hourKey = `${String(h).padStart(2, "0")}:00`;
-    if (!hourlyMap[hourKey]) hourlyMap[hourKey] = { sales: 0, orders: 0 };
-    hourlyMap[hourKey].sales = r2(hourlyMap[hourKey].sales + net);
-    hourlyMap[hourKey].orders++;
-
-    // الأصناف حسب القسم (التصنيف)
-    for (const item of o.items || []) {
-      const activeQty = (item.quantity || 0) - (item.refundedQuantity || 0);
-      if (activeQty <= 0) continue;
-      const prod = (db.products || []).find((p: any) => p.id === item.productId);
-      const catId = prod ? prod.categoryId : "other";
-      if (!catMap[catId]) {
-        const cat = (db.categories || []).find((c: any) => c.id === catId);
-        catMap[catId] = {
-          id: catId,
-          name: cat ? cat.nameAr : "أخرى",
-          items: {},
-          qty: 0, sales: 0, cost: 0, profit: 0,
-        };
-      }
-      const itemSales = r2(item.unitPrice * activeQty);
-      const itemCost = r2((prod?.cost || 0) * activeQty);
-      const key = item.productId;
-      if (!catMap[catId].items[key]) {
-        catMap[catId].items[key] = {
-          name: item.productNameSnapshot || prod?.nameAr || "صنف",
-          qty: 0, sales: 0, cost: 0, profit: 0,
-        };
-      }
-      const it = catMap[catId].items[key];
-      it.qty += activeQty;
-      it.sales = r2(it.sales + itemSales);
-      it.cost = r2(it.cost + itemCost);
-      it.profit = r2(it.sales - it.cost);
-
-      const c = catMap[catId];
-      c.qty += activeQty;
-      c.sales = r2(c.sales + itemSales);
-      c.cost = r2(c.cost + itemCost);
-      c.profit = r2(c.sales - c.cost);
-      totalCost += itemCost;
-    }
+  } catch (err: any) {
+    console.error("Error generating end-of-day report:", err);
+    return res.status(500).json({ error: "فشل إنشاء تقرير نهاية اليوم: " + (err.message || "") });
   }
-
-  const categories = Object.values(catMap)
-    .map((c: any) => ({ ...c, items: Object.values(c.items).sort((a: any, b: any) => b.sales - a.sales) }))
-    .sort((a: any, b: any) => b.sales - a.sales);
-
-  const expenses = (db.expenses || []).filter((e: any) => e.date === date);
-  const totalExpenses = r2(expenses.reduce((s: number, e: any) => s + (e.amount || 0), 0));
-
-  const { from, to } = dayRange(date);
-  const shifts = (db.shifts || [])
-    .filter((s: any) => { const d = new Date(s.openedAt); return d >= from && d <= to; })
-    .map((s: any) => ({
-      id: s.id,
-      shiftNumber: s.shiftNumber,
-      cashierName: s.cashierName,
-      openedAt: s.openedAt,
-      closedAt: s.closedAt || null,
-      status: s.status,
-      openingCash: s.openingCash || 0,
-      actualCash: s.actualCash ?? null,
-      expectedCash: s.expectedCash ?? null,
-      cashDifference: s.cashDifference ?? null,
-    }));
-
-  const topItems = categories
-    .flatMap((c: any) => c.items.map((i: any) => ({ ...i, category: c.name })))
-    .sort((a: any, b: any) => b.qty - a.qty)
-    .slice(0, 10);
-
-  res.json({
-    date,
-    generatedAt: new Date().toISOString(),
-    summary: {
-      orderCount: orders.length,
-      totalSales: r2(totalSales),
-      totalRefunded: r2(totalRefunded),
-      totalTax: r2(totalTax),
-      totalDiscount: r2(totalDiscount),
-      cashSales: r2(cashSales),
-      cardSales: r2(cardSales),
-      otherSales: r2(otherSales),
-      avgOrderValue: orders.length ? r2(totalSales / orders.length) : 0,
-      grossCost: r2(totalCost),
-      grossProfit: r2(totalSales - totalCost),
-      totalExpenses,
-      netProfit: r2(totalSales - totalCost - totalExpenses),
-    },
-    categories,
-    cashiers: Object.values(cashierMap).sort((a: any, b: any) => b.sales - a.sales),
-    hourly: Object.keys(hourlyMap).sort().map((k) => ({ hour: k, ...hourlyMap[k] })),
-    expenses,
-    shifts,
-    topItems,
-  });
 });
 
 // ═══════════════════════════════════════════════════════

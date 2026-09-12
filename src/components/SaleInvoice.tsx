@@ -355,9 +355,13 @@ export default function SaleInvoice({
       return;
     }
 
-    if (orderType === "dine_in" && !selectedTable) {
-      alert("الرجاء تحديد رقم الطاولة لطلب الصالة الداخلي!");
-      return;
+    let finalTable = selectedTable;
+    if (orderType === "dine_in" && !finalTable) {
+      // إذا لم يحدد طاولة، حدد أول طاولة متاحة تلقائياً أو رمز طاولة عامة حتى لا يتعطل البيع
+      if (tables.length > 0) {
+        finalTable = tables[0].id;
+        setSelectedTable(finalTable);
+      }
     }
 
     onTriggerPayment({
@@ -368,7 +372,7 @@ export default function SaleInvoice({
       tax: taxAmount,
       total: grandTotal,
       orderType,
-      tableId: selectedTable || null,
+      tableId: finalTable || null,
       waiterId: selectedWaiter || null,
       customerId: selectedCustomer?.id || null,
       notes: orderType === "takeaway" ? selectedDeliveryApp : ""

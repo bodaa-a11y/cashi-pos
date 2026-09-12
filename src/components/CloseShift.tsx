@@ -63,6 +63,161 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
   const actualCashValue = Number(actualCash) || 0;
   const differenceValue = actualCashValue - expectedCashValue;
 
+  const buildFullDailyReportHtml = async () => {
+    const bCurrency = settings?.currency || "ر.س";
+    const bName = settings?.businessNameAr || "مطاعم دبل للوجبات السريعة";
+    const today = new Date().toISOString().split("T")[0];
+
+    // جلب بيانات تقرير نهاية اليوم الشامل بكل الأقسام والأصناف
+    let eodData: any = null;
+    try {
+      const token = localStorage.getItem("pos_token");
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/reports/end-of-day?date=${today}`, { headers });
+      if (res.ok) eodData = await res.json();
+    } catch (e) {
+      console.error("Could not fetch eod data:", e);
+    }
+
+    const fmt = (n: number) => (Number(n) || 0).toFixed(2);
+
+    let categoriesHtml = "";
+    if (eodData && eodData.categories && eodData.categories.length > 0) {
+      categoriesHtml = `
+        <div style="margin-top: 10px; border-top: 2px solid black; padding-top: 6px;">
+          <div style="font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 6px; background: #eee; padding: 3px 0;">
+            تفاصيل مبيعات الأقسام والأصناف
+          </div>
+          ${eodData.categories.map((c: any) => `
+            <div style="margin-bottom: 8px;">
+              <div style="font-weight: bold; font-size: 11px; border-bottom: 1px solid #333; padding-bottom: 2px; margin-bottom: 3px;">
+                📁 ${c.name} (${c.qty} قطعة - ${fmt(c.sales)} ${bCurrency})
+              </div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 10px;" dir="rtl">
+                <thead>
+                  <tr style="border-bottom: 1px dashed #666; color: #555;">
+                    <th style="text-align: right; padding: 2px 0;">الصنف</th>
+                    <th style="text-align: center; width: 30px;">الكمية</th>
+                    <th style="text-align: left; width: 55px;">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(c.items || []).map((i: any) => `
+                    <tr style="border-bottom: 1px dotted #ccc;">
+                      <td style="text-align: right; padding: 2px 0;">${i.name}</td>
+                      <td style="text-align: center;">${i.qty}</td>
+                      <td style="text-align: left; font-family: monospace;">${fmt(i.sales)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+          @page { margin: 0; size: 80mm auto; }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', 'Tahoma', sans-serif;
+            background: white;
+            color: black;
+            direction: rtl;
+            text-align: right;
+          }
+          .report-container {
+            width: 72mm;
+            max-width: 72mm;
+            margin: 0 auto;
+            padding: 6px 4px;
+            font-size: 11px;
+            line-height: 1.4;
+          }
+          .text-center { text-align: center; }
+          .report-header {
+            border-bottom: 2px solid black;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+          }
+          .report-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 2px 0;
+          }
+          .report-info-block {
+            border-bottom: 1px dashed black;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            font-size: 10px;
+          }
+          .report-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="report-container">
+          <div class="report-header text-center">
+            <div class="report-title">${bName}</div>
+            <h3 style="margin: 4px 0; font-size: 12px; font-weight: bold; background: #eee; padding: 3px 0;">تقرير إغلاق الوردية واليومية الشامل (Z-Report)</h3>
+            <div style="font-size: 9px;">تاريخ ووقت الطباعة: ${new Date().toLocaleString('ar-SA')}</div>
+          </div>
+
+          <div class="report-info-block">
+            <div class="report-info-row"><span>رقم الوردية:</span><span>#${shift.shiftNumber}</span></div>
+            <div class="report-info-row"><span>الكاشير المسؤول:</span><span>${shift.cashierName}</span></div>
+            <div class="report-info-row"><span>وقت الافتتاح:</span><span>${new Date(shift.openedAt).toLocaleString('ar-SA')}</span></div>
+            <div class="report-info-row"><span>وقت الإغلاق:</span><span>${new Date().toLocaleString('ar-SA')}</span></div>
+          </div>
+
+          <div class="report-info-block" style="border-bottom: 1px dashed black;">
+            <div class="report-info-row"><span>الرصيد الافتتاحي:</span><span>${shift.openingCash.toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row" style="font-weight: bold;"><span>إجمالي المبيعات:</span><span>${(report?.totalSales || 0).toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row"><span>المبيعات النقدية (كاش):</span><span>${(report?.cashSales || 0).toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row"><span>مبيعات الشبكة (مدى/فيزا):</span><span>${(report?.cardSales || 0).toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row"><span>عدد الفواتير الكلي:</span><span>${report?.orderCount || 0} فاتورة</span></div>
+          </div>
+
+          <div class="report-info-block" style="border-bottom: none; font-weight: bold;">
+            <div class="report-info-row"><span>الكاش المتوقع بالدرج:</span><span>${expectedCashValue.toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row"><span>الكاش الفعلي بالدرج:</span><span>${actualCashValue.toFixed(2)} ${bCurrency}</span></div>
+            <div class="report-info-row" style="color: ${differenceValue < 0 ? 'red' : differenceValue > 0 ? 'blue' : 'green'}; border-top: 1px solid black; padding-top: 3px; margin-top: 3px;">
+              <span>العجز / الزيادة:</span>
+              <span>${differenceValue.toFixed(2)} ${bCurrency}</span>
+            </div>
+          </div>
+
+          ${notes ? `
+            <div style="font-size: 10px; background: #f9f9f9; padding: 6px; border: 1px solid #ccc; margin-top: 8px;">
+              <strong>الملاحظات:</strong>
+              <p style="margin: 3px 0 0 0;">${notes}</p>
+            </div>
+          ` : ''}
+
+          ${categoriesHtml}
+
+          <div class="text-center" style="margin-top: 15px; border-top: 1px dashed black; padding-top: 5px; font-size: 9px; color: #666;">
+            نظام كاشي لإدارة نقاط البيع Cashi POS — تقرير مُقفل نهائياً
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
   const handleCloseShiftSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (actualCash === "" || isNaN(actualCashValue)) {
@@ -74,6 +229,20 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
     setError("");
 
     try {
+      // 1. توليد تقرير الوردية واليوم الشامل للطباعة
+      const htmlReport = await buildFullDailyReportHtml();
+
+      // 2. محاولة الطباعة التلقائية عبر طابعة الكاشير
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI && electronAPI.printReceipt) {
+        try {
+          await electronAPI.printReceipt({ html: htmlReport });
+        } catch (printErr) {
+          console.error("Error auto-printing Z-report:", printErr);
+        }
+      }
+
+      // 3. قفل الوردية في السيرفر
       const response = await fetch(`/api/shifts/${shift.id}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
