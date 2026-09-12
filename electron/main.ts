@@ -132,7 +132,28 @@ function getLocalIP(): string {
  */
 async function startEmbeddedServer(): Promise<number> {
   // مسار قاعدة البيانات في مجلد بيانات التطبيق
-  const dbPath = path.join(app.getPath('userData'), 'db.json');
+  const userDataDir = app.getPath('userData');
+  const dbPath = path.join(userDataDir, 'db.json');
+
+  // إذا لم يكن ملف قاعدة البيانات موجوداً، استنسخ القالب النظيف المجهز بالإعدادات والمنيو بدون فواتير سابقة
+  if (!fs.existsSync(dbPath)) {
+    try {
+      const templatePaths = [
+        path.join(process.resourcesPath, 'default-data.json'),
+        path.join(__dirname, '..', 'default-data.json'),
+        path.join(process.cwd(), 'default-data.json')
+      ];
+      for (const tPath of templatePaths) {
+        if (fs.existsSync(tPath)) {
+          fs.copyFileSync(tPath, dbPath);
+          console.log(`[كاشي] ✅ تم تهيئة قاعدة البيانات النظيفة بنجاح من: ${tPath}`);
+          break;
+        }
+      }
+    } catch (err) {
+      console.error('[كاشي] خطأ أثناء نسخ قالب قاعدة البيانات:', err);
+    }
+  }
 
   // إنشاء سيرفر Express
   const { app: expressApp, start } = createServer(dbPath);

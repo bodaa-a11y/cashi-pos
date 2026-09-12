@@ -27,6 +27,10 @@ const config = {
       from: "public/manager",
       to: "manager",
       filter: ["**/*"]
+    },
+    {
+      from: "default-data.json",
+      to: "default-data.json"
     }
   ],
 
