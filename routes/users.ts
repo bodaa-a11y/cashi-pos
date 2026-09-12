@@ -6,9 +6,10 @@ import { authenticate } from "../middleware/authenticate";
 const router = express.Router();
 
 // عرض الموظفين النشطين
-router.get("/api/users", authenticate(["admin", "manager"]), (req, res) => {
+router.get("/api/users", authenticate(["admin", "manager", "cashier"]), (req, res) => {
   const db = readDB();
-  res.json(db.users.filter((u: any) => u.isActive));
+  const users = (db.users || []).filter((u: any) => u.isActive);
+  res.json(users);
 });
 
 // إضافة موظف جديد

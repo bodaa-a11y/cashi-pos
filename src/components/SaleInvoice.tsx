@@ -72,6 +72,7 @@ export default function SaleInvoice({
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [selectedWaiter, setSelectedWaiter] = useState<string>("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [staffList, setStaffList] = useState<any[]>([]);
   
   // Table status filter
   const [tableStatusFilter, setTableStatusFilter] = useState<string>("all");
@@ -118,6 +119,12 @@ export default function SaleInvoice({
       const resCust = await fetch("/api/customers");
       if (resCust.ok) {
         setCustomers(await resCust.json());
+      }
+
+      const resStaff = await fetch("/api/users");
+      if (resStaff.ok) {
+        const staffData = await resStaff.json();
+        setStaffList(staffData);
       }
     } catch (e) {
       console.error(e);
@@ -592,9 +599,10 @@ export default function SaleInvoice({
                   onChange={(e) => setSelectedWaiter(e.target.value)}
                   className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-xs font-bold text-stone-700 focus:outline-none"
                 >
-                  <option value="">اختر نادل الخدمة...</option>
-                  <option value="u-4">يوسف نادل</option>
-                  <option value="u-5">سارة نادل</option>
+                  <option value="">اختر نادل الخدمة (اختياري)...</option>
+                  {staffList.filter(u => u.role === 'waiter' || u.role === 'cashier' || u.role === 'manager' || u.role === 'admin').map(s => (
+                    <option key={s.id} value={s.id}>{s.fullName} ({s.role === 'waiter' ? 'نادل' : s.role === 'cashier' ? 'كاشير' : 'إدارة'})</option>
+                  ))}
                 </select>
               </div>
 

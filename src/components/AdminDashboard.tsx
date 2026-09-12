@@ -208,6 +208,17 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [newCategoryNameAr, setNewCategoryNameAr] = useState("");
   const [newCategoryNameEn, setNewCategoryNameEn] = useState("");
 
+  // Staff Management State
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState({
+    fullName: "",
+    username: "",
+    role: "cashier" as "admin" | "manager" | "cashier" | "waiter",
+    pinCode: "",
+    password: ""
+  });
+
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -818,6 +829,98 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleOpenAddUser = () => {
+    setEditingUser(null);
+    setUserForm({
+      fullName: "",
+      username: "",
+      role: "cashier",
+      pinCode: "",
+      password: ""
+    });
+    setShowUserModal(true);
+  };
+
+  const handleOpenEditUser = (u: User) => {
+    setEditingUser(u);
+    setUserForm({
+      fullName: u.fullName || "",
+      username: u.username || "",
+      role: u.role || "cashier",
+      pinCode: u.pinCode || "",
+      password: ""
+    });
+    setShowUserModal(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForm.fullName.trim() || !userForm.pinCode.trim()) {
+      alert("الرجاء إدخال الاسم الكامل ورمز الـ PIN للدخول السريع");
+      return;
+    }
+    if (userForm.pinCode.length < 4 || userForm.pinCode.length > 6) {
+      alert("رمز الـ PIN يجب أن يكون من 4 إلى 6 أرقام");
+      return;
+    }
+
+    try {
+      let res;
+      if (editingUser) {
+        res = await fetch(`/api/users/${editingUser.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(userForm)
+        });
+      } else {
+        res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(userForm)
+        });
+      }
+
+      if (res.ok) {
+        setShowUserModal(false);
+        setEditingUser(null);
+        fetchAllData();
+        alert(editingUser ? "تم تحديث بيانات الموظف بنجاح" : "تمت إضافة الموظف الجديد بنجاح! 🎉");
+      } else {
+        const data = await res.json();
+        alert(data.error || "فشل حفظ الموظف");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("خطأ في الاتصال بالخادم أثناء حفظ الموظف");
+    }
+  };
+
+  const handleDeleteUser = async (userToDelete: User) => {
+    if (userToDelete.id === currentUser.id) {
+      alert("لا يمكنك حذف الحساب الذي قمت بتسجيل الدخول به حالياً!");
+      return;
+    }
+    if (!confirm(`هل أنت متأكد من رغبتك في حذف / تعطيل الموظف (${userToDelete.fullName})؟`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/users/${userToDelete.id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        fetchAllData();
+        alert("تم تعطيل وحذف الموظف بنجاح");
+      } else {
+        const data = await res.json();
+        alert(data.error || "فشل حذف الموظف");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("خطأ في الاتصال بالخادم أثناء حذف الموظف");
     }
   };
 
@@ -1934,44 +2037,90 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <div className="space-y-6">
               
               <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-stone-100">
-                  <h3 className="font-bold text-stone-800 text-right">إدارة الندل وصلاحيات موظفي الوردية</h3>
+                <div className="p-5 border-b border-stone-100 flex items-center justify-between">
+                  <button
+                    onClick={handleOpenAddUser}
+                    className="px-4 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>إضافة موظف جديد</span>
+                  </button>
+                  <div>
+                    <h3 className="font-bold text-stone-800 text-right text-base">إدارة الموظفين وكوادر العمل</h3>
+                    <p className="text-xs text-stone-500 text-right mt-0.5">إضافة كاشيرات، مدراء، ندل، وضبط رمز الدخول السريع (PIN)</p>
+                  </div>
                 </div>
                 
                 <table className="w-full text-right text-xs">
                   <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
                     <tr>
                       <th className="p-4">الاسم الكامل</th>
-                      <th className="p-4">اسم المستخدم للوحات التحكم</th>
-                      <th className="p-4">الدور الوظيفي</th>
-                      <th className="p-4 text-center">كود الدخول السريع PIN</th>
+                      <th className="p-4">اسم المستخدم</th>
+                      <th className="p-4">الدور الوظيفي والصلاحيات</th>
+                      <th className="p-4 text-center">رمز الدخول السريع PIN</th>
                       <th className="p-4 text-center">الحالة</th>
+                      <th className="p-4 text-center">الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100 font-medium">
                     {users.map((u) => (
                       <tr key={u.id} className="hover:bg-stone-50/50">
-                        <td className="p-4 font-bold text-stone-800">{u.fullName}</td>
-                        <td className="p-4 font-mono text-stone-400">{u.username || "ندل بدون هيدر"}</td>
+                        <td className="p-4 font-bold text-stone-800 flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600 font-bold text-xs">
+                            {u.fullName.slice(0, 2)}
+                          </div>
+                          <span>{u.fullName}</span>
+                        </td>
+                        <td className="p-4 font-mono text-stone-400">{u.username || "—"}</td>
                         <td className="p-4">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             u.role === "admin"
-                              ? "bg-red-50 text-red-700"
+                              ? "bg-red-50 text-red-700 border border-red-200"
                               : u.role === "manager"
-                              ? "bg-purple-50 text-purple-700"
+                              ? "bg-purple-50 text-purple-700 border border-purple-200"
                               : u.role === "cashier"
-                              ? "bg-green-50 text-green-700"
-                              : "bg-blue-50 text-blue-700"
+                              ? "bg-green-50 text-green-700 border border-green-200"
+                              : "bg-blue-50 text-blue-700 border border-blue-200"
                           }`}>
-                            {u.role === "admin" ? "مدير عام (أدمن)" : u.role === "manager" ? "مدير صالة" : u.role === "cashier" ? "كاشير الصندوق" : "نادل الطاولات"}
+                            {u.role === "admin" ? "مدير عام (أدمن)" : u.role === "manager" ? "مدير صالة" : u.role === "cashier" ? "كاشير الصندوق" : "نادل خدمة"}
                           </span>
                         </td>
-                        <td className="p-4 text-center font-mono font-bold text-stone-700">{u.pinCode}</td>
+                        <td className="p-4 text-center font-mono font-bold text-stone-700">
+                          <span className="bg-stone-100 px-2 py-1 rounded-lg border border-stone-200">
+                            {u.pinCode || "••••"}
+                          </span>
+                        </td>
                         <td className="p-4 text-center">
-                          <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">نشط</span>
+                          <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-[10px] font-bold">نشط</span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleOpenEditUser(u)}
+                              className="p-1.5 hover:bg-stone-100 text-stone-600 rounded-lg transition-all"
+                              title="تعديل الموظف"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              disabled={u.id === currentUser.id}
+                              className="p-1.5 hover:bg-red-50 text-red-500 disabled:opacity-30 rounded-lg transition-all"
+                              title="حذف / تعطيل الموظف"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
+                    {users.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-stone-400">
+                          لا يوجد موظفون مسجلون حالياً. اضغط على "إضافة موظف جديد" للبدء.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3122,6 +3271,100 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Add/Edit Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden text-right">
+            <div className="bg-[#2E7D32] text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-bold">
+                {editingUser ? "تعديل موظف" : "تسجيل موظف جديد"}
+              </span>
+              <h3 className="text-lg font-bold">{editingUser ? "تعديل بيانات الموظف" : "إضافة موظف جديد"}</h3>
+              <button onClick={() => setShowUserModal(false)} className="p-1 hover:bg-white/15 rounded text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">الاسم الكامل للموظف *</label>
+                <input
+                  type="text"
+                  required
+                  value={userForm.fullName}
+                  onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+                  placeholder="مثال: محمد علي"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">الدور الوظيفي والصلاحيات *</label>
+                <select
+                  value={userForm.role}
+                  onChange={(e: any) => setUserForm({ ...userForm, role: e.target.value })}
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                >
+                  <option value="cashier">كاشير الصندوق (نقطة البيع وإصدار الفواتير)</option>
+                  <option value="waiter">نادل خدمة (طلبات الطاولات والصالة)</option>
+                  <option value="manager">مدير صالة (المراقبة والتقارير)</option>
+                  <option value="admin">مدير عام / أدمن (كامل الصلاحيات والإعدادات)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  رمز الدخول السريع (PIN) * <span className="text-stone-400 font-normal">(4 إلى 6 أرقام)</span>
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  value={userForm.pinCode}
+                  onChange={(e) => setUserForm({ ...userForm, pinCode: e.target.value.replace(/\D/g, "") })}
+                  placeholder="مثال: 5555"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-left font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  هذا الرمز يُستخدم للدخول السريع لشاشة البيع وفتح الوردية
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  اسم المستخدم <span className="text-stone-400 font-normal">(اختياري للوحات التحكم)</span>
+                </label>
+                <input
+                  type="text"
+                  value={userForm.username}
+                  onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                  placeholder="مثال: mohamed"
+                  dir="ltr"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end border-t border-stone-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(false)}
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 text-xs font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow"
+                >
+                  {editingUser ? "حفظ التعديلات" : "إضافة الموظف"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
