@@ -116,22 +116,28 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
             @page {
               margin: 0;
+              size: 80mm auto;
+            }
+            * {
+              box-sizing: border-box;
             }
             body {
               margin: 0;
-              padding: 8px 12px;
-              font-family: 'Cairo', sans-serif;
+              padding: 0;
+              font-family: 'Cairo', 'Tahoma', sans-serif;
               background: white;
               color: black;
               direction: rtl;
               text-align: right;
             }
             .report-container {
-              width: 100%;
-              max-width: 270px;
+              width: 72mm;
+              max-width: 72mm;
               margin: 0 auto;
+              padding: 6px 4px;
               font-size: 11px;
               line-height: 1.4;
+              box-sizing: border-box;
             }
             .text-center {
               text-align: center;

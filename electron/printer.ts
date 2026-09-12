@@ -14,6 +14,8 @@ import { BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
+import { execSync } from 'child_process';
+import os from 'os';
 
 const require = createRequire(import.meta.url);
 
@@ -46,6 +48,9 @@ export interface PrinterConfig {
 
   /** اسم الطابعة في نظام التشغيل — للطباعة الاحتياطية */
   printerName?: string;
+
+  /** الطباعة الصامتة المباشرة (true) أو إظهار نافذة خيارات الطباعة (false) */
+  silentPrint?: boolean;
 }
 
 /** بيانات الإيصال */
@@ -283,6 +288,7 @@ export class PrinterManager {
       paperWidth: 80,
       autoCut: true,
       openDrawerOnCash: true,
+      silentPrint: true,
     };
   }
 
@@ -599,23 +605,292 @@ export class PrinterManager {
   }
 
   // ═══════════════════════════════════════════════════════
+  //  الطباعة الخام عبر Win32 API (بدون درايفر رسومي)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * إرسال بيانات خام مباشرة للطابعة عبر Win32 Spooler API
+   * هذه الطريقة تتجاوز درايفر الطابعة وترسل أوامر ESC/POS مباشرة
+   * @param printerName اسم الطابعة في ويندوز
+   * @param data البيانات الخام (ESC/POS)
+   * @returns true إذا نجح الإرسال
+   */
+  private async sendRawToWinPrinter(printerName: string, data: Buffer): Promise<boolean> {
+    if (process.platform !== 'win32') {
+      console.warn('[كاشي طباعة] ⚠️ الطباعة الخام متاحة فقط على ويندوز');
+      return false;
+    }
+
+    const runId = Date.now();
+    const tempDataFile = path.join(os.tmpdir(), `cashi-raw-${runId}.bin`);
+    const tempPsFile = path.join(os.tmpdir(), `cashi-raw-${runId}.ps1`);
+    const className = `CashiRaw_${runId}`;
+
+    try {
+      // كتابة البيانات الخام في ملف مؤقت
+      fs.writeFileSync(tempDataFile, data);
+
+      // سكريبت PowerShell يستخدم Win32 API لإرسال البيانات مباشرة للطابعة
+      const safeDataPath = tempDataFile.replace(/'/g, "''");
+      const safePrinterName = printerName.replace(/'/g, "''");
+      const psScript = `
+Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+public class ${className} {
+    [StructLayout(LayoutKind.Sequential)] public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", CharSet=CharSet.Ansi, SetLastError=true)]
+    public static extern bool OpenPrinter(string p, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool StartDocPrinter(IntPtr h, int l, ref DOCINFOA di);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool StartPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool WritePrinter(IntPtr h, IntPtr p, int c, out int w);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool EndPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool EndDocPrinter(IntPtr h);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr h);
+    public static bool SendFile(string printer, string filePath) {
+        byte[] data = File.ReadAllBytes(filePath);
+        IntPtr hPrinter;
+        if (!OpenPrinter(printer, out hPrinter, IntPtr.Zero)) return false;
+        DOCINFOA di = new DOCINFOA { pDocName = "Cashi Receipt", pDataType = "RAW" };
+        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return false; }
+        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return false; }
+        IntPtr ptr = Marshal.AllocCoTaskMem(data.Length);
+        Marshal.Copy(data, 0, ptr, data.Length);
+        int written;
+        bool ok = WritePrinter(hPrinter, ptr, data.Length, out written);
+        Marshal.FreeCoTaskMem(ptr);
+        EndPagePrinter(hPrinter);
+        EndDocPrinter(hPrinter);
+        ClosePrinter(hPrinter);
+        return ok && written == data.Length;
+    }
+}
+"@
+try {
+  \$r = [${className}]::SendFile('${safePrinterName}', '${safeDataPath}')
+  if (\$r) { Write-Output "OK" } else { Write-Output "FAIL" }
+} catch { Write-Output "FAIL" }
+`;
+
+      fs.writeFileSync(tempPsFile, psScript, 'utf-8');
+      const output = execSync(
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "${tempPsFile}"`,
+        { encoding: 'utf-8', timeout: 20000 }
+      ).trim();
+
+      const success = output.includes('OK');
+      if (success) {
+        console.log(`[كاشي طباعة] ✅ تم إرسال ${data.length} بايت خام للطابعة: ${printerName}`);
+      } else {
+        console.error(`[كاشي طباعة] ❌ فشل إرسال البيانات الخام. Output: ${output}`);
+      }
+      return success;
+    } catch (error) {
+      console.error('[كاشي طباعة] ❌ خطأ في الطباعة الخام:', error);
+      return false;
+    } finally {
+      try { fs.unlinkSync(tempDataFile); } catch {}
+      try { fs.unlinkSync(tempPsFile); } catch {}
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  طباعة HTML كصورة Raster (للطابعات الحرارية USB)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * تحويل محتوى HTML لصورة وإرسالها كأوامر ESC/POS raster مباشرة
+   * هذه الطريقة لا تحتاج درايفر رسومي — تعمل مع أي طابعة حرارية ESC/POS
+   *
+   * الخطوات:
+   * 1. فتح نافذة مخفية وتحميل HTML الفاتورة
+   * 2. التقاط الصفحة كصورة
+   * 3. تحويل الصورة لـ bitmap أبيض وأسود (monochrome)
+   * 4. ترميز البيانات بصيغة ESC/POS raster (أمر GS v 0)
+   * 5. إرسال البيانات الخام مباشرة للطابعة عبر Win32 API
+   *
+   * @param html محتوى HTML الإيصال
+   * @param parentWindow النافذة الأم
+   * @returns true إذا نجحت الطباعة
+   */
+  async printHtmlAsRaster(html: string, parentWindow: BrowserWindow): Promise<boolean> {
+    const config = this.printerConfig;
+    const paperW = config?.paperWidth ?? 80;
+    const printerName = config?.printerName?.trim();
+
+    if (!printerName) {
+      throw new Error('اسم الطابعة غير محدد في الإعدادات');
+    }
+
+    // عرض منطقة الطباعة الفعلية بالبكسل (203 DPI معيار الطابعات الحرارية)
+    const DPI = 203;
+    const printableWidthMM = paperW === 80 ? 72 : 48;
+    const printableWidthPx = Math.round((printableWidthMM / 25.4) * DPI); // ~576 لـ 80mm
+
+    // إنشاء نافذة مخفية لعرض HTML الفاتورة
+    const renderWindow = new BrowserWindow({
+      show: false,
+      width: printableWidthPx,
+      height: 900,
+      x: -10000,
+      y: -10000,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        offscreen: true,
+      },
+    });
+
+    try {
+      // تحميل HTML الإيصال
+      await renderWindow.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+      );
+
+      // انتظار اكتمال تحميل الخطوط والعناصر
+      await new Promise((r) => setTimeout(r, 800));
+
+      // قياس الارتفاع الفعلي للمحتوى
+      const scrollHeight: number = await renderWindow.webContents.executeJavaScript(
+        `Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0, 350)`
+      );
+
+      // ضبط حجم النافذة لتطابق المحتوى
+      const captureHeight = Math.min(scrollHeight + 30, 5000);
+      renderWindow.setContentSize(printableWidthPx, captureHeight);
+      await new Promise((r) => setTimeout(r, 400));
+
+      // التقاط صورة الإيصال كاملاً
+      const image = await renderWindow.webContents.capturePage({
+        x: 0,
+        y: 0,
+        width: printableWidthPx,
+        height: captureHeight,
+      });
+
+      if (!renderWindow.isDestroyed()) renderWindow.close();
+
+      const size = image.getSize();
+      if (size.width === 0 || size.height === 0) {
+        throw new Error('فشل التقاط صورة الإيصال — الصورة فارغة');
+      }
+
+      console.log(`[كاشي طباعة] 📸 تم التقاط صورة الإيصال: ${size.width}×${size.height}px`);
+
+      // الحصول على بيانات البكسل الخام (RGBA)
+      const bitmap = image.toBitmap();
+
+      // تحويل الصورة إلى أبيض وأسود وترميزها كـ ESC/POS raster
+      const widthBytes = Math.ceil(size.width / 8);
+      const rasterData = Buffer.alloc(widthBytes * size.height);
+
+      for (let y = 0; y < size.height; y++) {
+        for (let xByte = 0; xByte < widthBytes; xByte++) {
+          let byteVal = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const x = xByte * 8 + bit;
+            if (x < size.width) {
+              const idx = (y * size.width + x) * 4; // RGBA format
+              const r = bitmap[idx];
+              const g = bitmap[idx + 1];
+              const b = bitmap[idx + 2];
+              // تحويل لدرجة رمادية — البكسل الداكن = 1 (طباعة)
+              const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+              if (gray < 128) {
+                byteVal |= 0x80 >> bit;
+              }
+            }
+          }
+          rasterData[y * widthBytes + xByte] = byteVal;
+        }
+      }
+
+      // بناء أوامر ESC/POS الكاملة
+      const header = Buffer.from([
+        0x1b, 0x40, // ESC @ — تهيئة الطابعة
+        0x1d, 0x76, 0x30, 0x00, // GS v 0 m=0 — طباعة صورة raster
+        widthBytes & 0xff,
+        (widthBytes >> 8) & 0xff, // xL xH — عرض الصورة بالبايت
+        size.height & 0xff,
+        (size.height >> 8) & 0xff, // yL yH — ارتفاع الصورة بالنقاط
+      ]);
+
+      const footer = Buffer.from([
+        0x0a, 0x0a, 0x0a, 0x0a, // تغذية ورق إضافية
+        0x1d, 0x56, 0x42, 0x00, // GS V B 0 — قص جزئي للورق
+      ]);
+
+      const fullData = Buffer.concat([header, rasterData, footer]);
+
+      console.log(
+        `[كاشي طباعة] 🖨️ إرسال ${fullData.length} بايت raster للطابعة: ${printerName}`
+      );
+
+      // إرسال البيانات الخام مباشرة للطابعة
+      const success = await this.sendRawToWinPrinter(printerName, fullData);
+
+      if (success) {
+        console.log('[كاشي طباعة] ✅ تمت طباعة الإيصال كصورة raster بنجاح!');
+      } else {
+        throw new Error('فشل إرسال بيانات raster للطابعة');
+      }
+
+      return success;
+    } catch (err) {
+      if (!renderWindow.isDestroyed()) renderWindow.close();
+      throw err;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
   //  الطباعة الاحتياطية عبر Electron
   // ═══════════════════════════════════════════════════════
 
   /**
    * طباعة احتياطية باستخدام نظام الطباعة المدمج في Electron
+   * للطابعات الحرارية USB: يحاول أولاً الطباعة كصورة raster مباشرة
+   * إذا فشلت: يستخدم نظام طباعة Electron/Windows كاحتياط
    * @param html محتوى HTML للطباعة
    * @param parentWindow النافذة الأم (للحوارات)
    * @returns true إذا نجحت الطباعة
    */
   async fallbackPrint(html: string, parentWindow: BrowserWindow): Promise<boolean> {
+    const config = this.printerConfig;
+
+    // ═══ للطابعات الحرارية USB على ويندوز: طباعة raster مباشرة ═══
+    if (process.platform === 'win32' && config?.printerName?.trim()) {
+      try {
+        console.log('[كاشي طباعة] 🖨️ محاولة الطباعة الحرارية المباشرة (HTML → صورة → ESC/POS raster)...');
+        return await this.printHtmlAsRaster(html, parentWindow);
+      } catch (rasterErr) {
+        console.warn('[كاشي طباعة] ⚠️ فشلت طباعة Raster، جاري التحويل لطباعة Electron:', rasterErr);
+        // نكمل للطباعة الاحتياطية عبر Electron
+      }
+    }
+
+    // ═══ الطريقة الاحتياطية: طباعة عبر نظام Electron/Windows ═══
     return new Promise((resolve, reject) => {
-      const paperW = this.printerConfig?.paperWidth ?? 80;
+      const paperW = config?.paperWidth ?? 80;
+      const isSilent = config?.silentPrint !== false;
+      const targetPrinter = config?.printerName?.trim() || undefined;
+      const winWidth = paperW === 80 ? 320 : 230;
+
       const printWindow = new BrowserWindow({
         show: false,
         parent: parentWindow,
-        width: paperW === 80 ? 302 : 220, // ~80mm or ~58mm at 96 DPI
-        height: 900,
+        width: winWidth,
+        height: 750,
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
@@ -626,20 +901,47 @@ export class PrinterManager {
         `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
       );
 
-      printWindow.webContents.on('did-finish-load', () => {
-        // تأخير قصير لضمان تحميل الخطوط والصور (مثل QR Code) قبل الطباعة
-        setTimeout(() => {
+      printWindow.webContents.on('did-finish-load', async () => {
+        try {
+          // انتظر قليلاً لضمان اكتمال تحميل الخطوط وصور الباركود وQR
+          await new Promise((r) => setTimeout(r, 450));
+
+          // قياس الارتفاع الفعلي لمحتوى الإيصال بالبكسل من الـ DOM مباشرة
+          let scrollHeight = 500;
+          try {
+            scrollHeight = await printWindow.webContents.executeJavaScript(
+              `Math.max(
+                document.body.scrollHeight || 0,
+                document.documentElement.scrollHeight || 0,
+                document.querySelector('.receipt-container')?.scrollHeight || 0,
+                document.querySelector('.kitchen-container')?.scrollHeight || 0,
+                document.querySelector('.report-container')?.scrollHeight || 0,
+                350
+              )`
+            );
+          } catch {
+            scrollHeight = 600;
+          }
+
+          // تحويل البكسل (بدقة 96 DPI) إلى ميكرومتر بدقة لمقاس الورق الحراري
+          // مع إضافة 12 مم هامش للتغذية وقص الورق في نهاية الفاتورة
+          const contentHeightMicrons = Math.max(
+            Math.ceil((scrollHeight / 96) * 25.4 * 1000) + 12000,
+            50000 // حد أدنى 50 مم
+          );
+
+          console.log(`[كاشي طباعة] 📏 أبعاد الإيصال الحراري: عرض ${paperW} مم، ارتفاع ${(contentHeightMicrons / 1000).toFixed(1)} مم (${scrollHeight}px)`);
+
           const printOptions: Electron.WebContentsPrintOptions = {
-            silent: true,
+            silent: isSilent,
             printBackground: true,
-            deviceName: this.printerConfig?.printerName || undefined,
+            deviceName: targetPrinter,
             margins: {
               marginType: 'none',
             },
-            // حجم الصفحة بالميكرومتر — عرض الورقة الحرارية وارتفاع طويل بما يكفي
             pageSize: {
-              width: paperW * 1000,       // 80mm = 80000µm or 58mm = 58000µm
-              height: 3000 * 1000,        // 3 متر — يكفي لأي إيصال (الطابعة تقص تلقائياً)
+              width: paperW * 1000, // 80000µm أو 58000µm
+              height: contentHeightMicrons, // الارتفاع الفعلي الحقيقي بدلاً من 3 أمتار
             },
           };
 
@@ -649,14 +951,51 @@ export class PrinterManager {
             }
 
             if (success) {
-              console.log('[كاشي طباعة] ✅ تمت الطباعة الاحتياطية بنجاح');
+              console.log(`[كاشي طباعة] ✅ تمت طباعة الإيصال بنجاح على: ${targetPrinter || 'طابعة النظام الافتراضية'}`);
               resolve(true);
             } else {
-              console.error('[كاشي طباعة] ❌ فشلت الطباعة الاحتياطية:', failureReason);
+              console.error(`[كاشي طباعة] ❌ فشلت الطباعة على ${targetPrinter || 'الافتراضية'}:`, failureReason);
+              
+              // إذا فشلت الطباعة الصامتة على طابعة محددة، نعيد المحاولة بإظهار نافذة اختيار الطابعة
+              if (isSilent) {
+                console.log('[كاشي طباعة] 🔄 محاولة الطباعة بإظهار نافذة اختيار الطابعة من ويندوز...');
+                const retryWindow = new BrowserWindow({
+                  show: false,
+                  parent: parentWindow,
+                  width: winWidth,
+                  height: 750,
+                  webPreferences: { contextIsolation: true, nodeIntegration: false },
+                });
+                retryWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+                retryWindow.webContents.on('did-finish-load', () => {
+                  setTimeout(() => {
+                    retryWindow.webContents.print({
+                      silent: false, // إظهار نافذة الويندوز لاختيار الطابعة يدوياً
+                      printBackground: true,
+                      margins: { marginType: 'none' },
+                    }, (retrySuccess, retryReason) => {
+                      if (!retryWindow.isDestroyed()) retryWindow.close();
+                      if (retrySuccess) {
+                        console.log('[كاشي طباعة] ✅ نجحت الطباعة عبر نافذة الويندوز');
+                        resolve(true);
+                      } else {
+                        reject(new Error(retryReason || 'ألغى المستخدم أو فشلت الطباعة'));
+                      }
+                    });
+                  }, 400);
+                });
+                return;
+              }
+
               reject(new Error(`فشلت الطباعة: ${failureReason}`));
             }
           });
-        }, 800); // 800ms تأخير لضمان تحميل الخطوط وصورة QR
+        } catch (err) {
+          if (!printWindow.isDestroyed()) {
+            printWindow.close();
+          }
+          reject(err);
+        }
       });
 
       setTimeout(() => {
@@ -664,7 +1003,7 @@ export class PrinterManager {
           printWindow.close();
         }
         reject(new Error('مهلة الطباعة انتهت'));
-      }, 15000);
+      }, 25000);
     });
   }
 

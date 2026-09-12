@@ -137,7 +137,8 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     paperWidth: 80,
     autoCut: true,
     openDrawerOnCash: true,
-    printerName: ""
+    printerName: "",
+    silentPrint: true
   });
   
   // حالات صفحة التقارير والفواتير
@@ -461,11 +462,14 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           <style>
             @page {
               margin: 0;
-              size: auto;
+              size: 80mm auto;
+            }
+            * {
+              box-sizing: border-box;
             }
             body {
               margin: 0;
-              padding: 4px 6px;
+              padding: 0;
               font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
               background: white;
               color: black;
@@ -474,11 +478,13 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
               -webkit-print-color-adjust: exact;
             }
             .receipt-container {
-              width: 100%;
-              max-width: 100%;
+              width: 72mm;
+              max-width: 72mm;
               margin: 0 auto;
+              padding: 6px 4px;
               font-size: 11px;
               line-height: 1.4;
+              box-sizing: border-box;
             }
             .text-center {
               text-align: center;
@@ -679,37 +685,50 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       }
 
       const html = `
-        <div dir="rtl" class="receipt-print text-stone-800 p-4 font-mono text-xs text-right leading-relaxed" style="width: 280px; font-family: 'Cairo', 'JetBrains Mono', monospace;">
-          <div class="text-center border-b border-dashed border-stone-400 pb-2 mb-2">
-            <h2 class="font-bold text-sm">${bName}</h2>
-            <h3 class="font-bold text-xs mt-1 bg-stone-100 py-1">${reportTitle}</h3>
-            <p class="text-[9px] mt-1 text-stone-600">${dateText}</p>
-            <p class="text-[9px]">تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</p>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            @page { margin: 0; size: 80mm auto; }
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 0; font-family: 'Tahoma', 'Cairo', sans-serif; direction: rtl; text-align: right; }
+            .receipt-container { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 6px 4px; font-size: 11px; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px;">
+              <h2 style="font-size: 14px; font-weight: bold; margin: 0;">${bName}</h2>
+              <h3 style="font-size: 12px; font-weight: bold; margin: 4px 0; background: #f0f0f0; padding: 3px;">${reportTitle}</h3>
+              <p style="font-size: 9px; margin: 2px 0; color: #555;">${dateText}</p>
+              <p style="font-size: 9px; margin: 2px 0;">تاريخ الطباعة: ${new Date().toLocaleString('ar-SA')}</p>
+            </div>
+            <div style="border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px; line-height: 1.6;">
+              <div style="display: flex; justify-content: space-between;"><span>إجمالي المبيعات:</span><span style="font-weight: bold;">${reportResult.totalSales.toFixed(2)} ${bCurrency}</span></div>
+              <div style="display: flex; justify-content: space-between;"><span>إجمالي التكلفة:</span><span>${reportResult.totalCost.toFixed(2)} ${bCurrency}</span></div>
+              <div style="display: flex; justify-content: space-between; font-weight: bold;"><span>صافي الأرباح:</span><span style="color: green;">${reportResult.profit.toFixed(2)} ${bCurrency}</span></div>
+              <div style="display: flex; justify-content: space-between;"><span>إجمالي الضريبة:</span><span>${reportResult.totalTax.toFixed(2)} ${bCurrency}</span></div>
+              <div style="display: flex; justify-content: space-between;"><span>عدد الفواتير:</span><span>${reportResult.orderCount} فاتورة</span></div>
+              <div style="display: flex; justify-content: space-between;"><span>متوسط الفاتورة:</span><span>${reportResult.avgOrderValue.toFixed(2)} ${bCurrency}</span></div>
+            </div>
+            <div style="border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px;">
+              <p style="font-weight: bold; text-align: center; margin: 2px 0 4px 0;">المبيعات حسب التصنيفات</p>
+              ${reportResult.categorySales.map((c: any) => `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; margin: 2px 0;"><span>${c.name}:</span><span>${c.value.toFixed(2)} ${bCurrency}</span></div>
+              `).join('')}
+            </div>
+            <div style="border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px;">
+              <p style="font-weight: bold; text-align: center; margin: 2px 0 4px 0;">المنتجات الأكثر مبيعاً</p>
+              ${reportResult.topSelling.map((p: any, idx: number) => `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; margin: 2px 0;"><span>${idx+1}. ${p.name}:</span><span>${p.qty} وحدة</span></div>
+              `).join('')}
+            </div>
+            <div style="text-align: center; margin-top: 8px; font-size: 9px; color: #666;">
+              <p style="margin: 2px 0;">نظام كاشي لإدارة نقاط البيع Cashi POS</p>
+            </div>
           </div>
-          <div class="space-y-1.5 border-b border-dashed border-stone-400 pb-2 mb-2">
-            <div class="flex justify-between"><span>إجمالي المبيعات:</span><span class="font-bold">${reportResult.totalSales.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>إجمالي التكلفة:</span><span>${reportResult.totalCost.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between font-bold"><span>صافي الأرباح:</span><span class="text-emerald-700">${reportResult.profit.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>إجمالي الضريبة:</span><span>${reportResult.totalTax.toFixed(2)} ${bCurrency}</span></div>
-            <div class="flex justify-between"><span>عدد الفواتير:</span><span>${reportResult.orderCount} فاتورة</span></div>
-            <div class="flex justify-between"><span>متوسط الفاتورة:</span><span>${reportResult.avgOrderValue.toFixed(2)} ${bCurrency}</span></div>
-          </div>
-          <div class="border-b border-dashed border-stone-400 pb-2 mb-2">
-            <p class="font-bold text-center mb-1">المبيعات حسب التصنيفات</p>
-            ${reportResult.categorySales.map((c: any) => `
-              <div class="flex justify-between text-[10px]"><span>${c.name}:</span><span>${c.value.toFixed(2)} ${bCurrency}</span></div>
-            `).join('')}
-          </div>
-          <div class="border-b border-dashed border-stone-400 pb-2 mb-2">
-            <p class="font-bold text-center mb-1">المنتجات الأكثر مبيعاً</p>
-            ${reportResult.topSelling.map((p: any, idx: number) => `
-              <div class="flex justify-between text-[10px]"><span>${idx+1}. ${p.name}:</span><span>${p.qty} وحدة</span></div>
-            `).join('')}
-          </div>
-          <div class="text-center mt-3 text-[9px] text-stone-400">
-            <p>نظام كاشي لإدارة نقاط البيع</p>
-          </div>
-        </div>
+        </body>
+        </html>
       `;
 
       await electronAPI.printReceipt({ html });
@@ -2461,7 +2480,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                     </select>
                   </div>
 
-                  <div className="flex gap-4 items-center justify-end h-full pt-4">
+                  <div className="flex flex-wrap gap-4 items-center justify-end h-full pt-4">
                     <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-stone-700">
                       <span>فتح درج الكاشير مع الكاش</span>
                       <input
@@ -2481,8 +2500,24 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                         className="w-4 h-4 text-[#2E7D32]"
                       />
                     </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-stone-700">
+                      <span>طباعة مباشرة بدون إظهار نافذة ويندوز (صامتة)</span>
+                      <input
+                        type="checkbox"
+                        checked={printerSettings.silentPrint !== false}
+                        onChange={(e) => setPrinterSettings({ ...printerSettings, silentPrint: e.target.checked })}
+                        className="w-4 h-4 text-[#2E7D32]"
+                      />
+                    </label>
                   </div>
                 </div>
+
+                {printerSettings.silentPrint === false && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                    ℹ️ <strong>ملاحظة:</strong> عند إيقاف الطباعة الصامتة، ستظهر نافذة ويندوز لاختيار الطابعة ومقاس الورق الحراري يدوياً عند كل طباعة.
+                  </div>
+                )}
 
                 <div className="flex gap-2 justify-end pt-2">
                   <button
@@ -2491,16 +2526,34 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                       if (api) {
                         try {
                           await api.printReceipt({ html: `
-                            <div style="font-family:'Cairo';text-align:center;width:280px;font-size:12px;padding:10px;">
-                              <h3 style="margin:0;">كاشي Cashi</h3>
-                              <p style="margin:5px 0;">اختبار توافقية الطباعة بنجاح</p>
-                              <p style="font-size:10px;color:#888;">${new Date().toLocaleString()}</p>
-                              <div style="border-top:1px dashed #000;margin:10px 0;"></div>
-                            </div>
+                            <html>
+                            <head>
+                              <meta charset="utf-8">
+                              <style>
+                                @page { margin: 0; size: 80mm auto; }
+                                * { box-sizing: border-box; }
+                                body { margin: 0; padding: 0; font-family: 'Tahoma', 'Arial', sans-serif; direction: rtl; text-align: right; }
+                                .receipt-container { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 8px 4px; font-size: 11px; text-align: center; }
+                              </style>
+                            </head>
+                            <body>
+                              <div class="receipt-container">
+                                <h3 style="margin: 0; font-size: 14px; font-weight: bold;">كاشي — نظام الكاشير المتكامل</h3>
+                                <p style="margin: 4px 0; font-size: 11px;">✅ اختبار نجاح توافقية الطابعة الحرارية</p>
+                                <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+                                <p style="font-size: 10px; margin: 2px 0;">نوع الطابعة: طابعة فواتير حرارية (${printerSettings.paperWidth || 80} مم)</p>
+                                <p style="font-size: 10px; margin: 2px 0;">الطابعة المختارة: ${printerSettings.printerName || 'طابعة النظام الافتراضية'}</p>
+                                <p style="font-size: 10px; margin: 2px 0; color: #555;">${new Date().toLocaleString('ar-SA')}</p>
+                                <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+                                <p style="font-size: 10px; font-weight: bold; margin: 4px 0;">أرقام وحسابات: 1234567890 | ١٢٣٤٥٦٧٨٩٠</p>
+                                <p style="font-size: 9px; color: #666; margin-top: 6px;">جاهز لطباعة الفواتير وتذاكر المطبخ</p>
+                              </div>
+                            </body>
+                            </html>
                           `});
                           alert("تم إرسال إيصال تجريبي للطابعة! 🖨️");
                         } catch (e) {
-                          alert("فشل طباعة الإيصال التجريبي");
+                          alert("فشل طباعة الإيصال التجريبي: تأكد من تشغيل الطابعة وتوصيلها");
                         }
                       } else {
                         alert("الطباعة متاحة فقط في برنامج الويندوز");

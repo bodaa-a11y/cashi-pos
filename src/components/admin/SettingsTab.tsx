@@ -30,6 +30,7 @@ interface SettingsTabProps {
     autoCut: boolean;
     openDrawerOnCash: boolean;
     printerName: string;
+    silentPrint?: boolean;
   };
   setPrinterSettings: React.Dispatch<React.SetStateAction<any>>;
   handleSavePrinterSettings: () => Promise<void>;
@@ -352,7 +353,7 @@ export default function SettingsTab({
             </select>
           </div>
 
-          <div className="flex gap-4 items-center justify-end h-full pt-4">
+          <div className="flex flex-wrap gap-4 items-center justify-end h-full pt-4">
             <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-stone-700">
               <span>فتح درج الكاشير مع الكاش</span>
               <input
@@ -372,8 +373,24 @@ export default function SettingsTab({
                 className="w-4 h-4 text-[#2E7D32]"
               />
             </label>
+
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-stone-700">
+              <span>طباعة مباشرة بدون إظهار نافذة ويندوز (صامتة)</span>
+              <input
+                type="checkbox"
+                checked={printerSettings.silentPrint !== false}
+                onChange={(e) => setPrinterSettings({ ...printerSettings, silentPrint: e.target.checked })}
+                className="w-4 h-4 text-[#2E7D32]"
+              />
+            </label>
           </div>
         </div>
+
+        {printerSettings.silentPrint === false && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+            ℹ️ <strong>ملاحظة:</strong> عند إيقاف الطباعة الصامتة، ستظهر لك نافذة ويندوز لاختيار الطابعة عند كل عملية بيع. هذا الخيار مفيد جداً لاختبار الطابعة أو إذا كان تعريف الطابعة يتطلب إعدادات خاصة.
+          </div>
+        )}
 
         <div className="flex gap-2 justify-end pt-2">
           <button
@@ -383,16 +400,34 @@ export default function SettingsTab({
               if (api) {
                 try {
                   await api.printReceipt({ html: `
-                    <div style="font-family:'Cairo';text-align:center;width:280px;font-size:12px;padding:10px;">
-                      <h3 style="margin:0;">كاشي Cashi</h3>
-                      <p style="margin:5px 0;">اختبار توافقية الطباعة بنجاح</p>
-                      <p style="font-size:10px;color:#888;">${new Date().toLocaleString()}</p>
-                      <div style="border-top:1px dashed #000;margin:10px 0;"></div>
-                    </div>
+                    <html>
+                    <head>
+                      <meta charset="utf-8">
+                      <style>
+                        @page { margin: 0; size: 80mm auto; }
+                        * { box-sizing: border-box; }
+                        body { margin: 0; padding: 0; font-family: 'Tahoma', 'Arial', sans-serif; direction: rtl; text-align: right; }
+                        .receipt-container { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 8px 4px; font-size: 11px; text-align: center; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="receipt-container">
+                        <h3 style="margin: 0; font-size: 14px; font-weight: bold;">كاشي — نظام الكاشير المتكامل</h3>
+                        <p style="margin: 4px 0; font-size: 11px;">✅ اختبار نجاح توافقية الطابعة الحرارية</p>
+                        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+                        <p style="font-size: 10px; margin: 2px 0;">نوع الطابعة: طابعة فواتير حرارية (${printerSettings.paperWidth || 80} مم)</p>
+                        <p style="font-size: 10px; margin: 2px 0;">الطابعة المختارة: ${printerSettings.printerName || 'طابعة النظام الافتراضية'}</p>
+                        <p style="font-size: 10px; margin: 2px 0; color: #555;">${new Date().toLocaleString('ar-SA')}</p>
+                        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+                        <p style="font-size: 10px; font-weight: bold; margin: 4px 0;">أرقام وحسابات: 1234567890 | ١٢٣٤٥٦٧٨٩٠</p>
+                        <p style="font-size: 9px; color: #666; margin-top: 6px;">جاهز لطباعة الفواتير وتذاكر المطبخ</p>
+                      </div>
+                    </body>
+                    </html>
                   `});
                   alert("تم إرسال إيصال تجريبي للطابعة! 🖨️");
                 } catch (e) {
-                  alert("فشل طباعة الإيصال التجريبي");
+                  alert("فشل طباعة الإيصال التجريبي: تأكد من تشغيل الطابعة وتوصيلها بالكمبيوتر");
                 }
               } else {
                 alert("الطباعة متاحة فقط في برنامج الويندوز");

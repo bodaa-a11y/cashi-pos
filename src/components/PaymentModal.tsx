@@ -304,11 +304,14 @@ export default function PaymentModal({
         <style>
           @page {
             margin: 0;
-            size: auto;
+            size: 80mm auto;
+          }
+          * {
+            box-sizing: border-box;
           }
           body {
             margin: 0;
-            padding: 4px 6px;
+            padding: 0;
             font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
             background: white;
             color: black;
@@ -317,11 +320,13 @@ export default function PaymentModal({
             -webkit-print-color-adjust: exact;
           }
           .receipt-container {
-            width: 100%;
-            max-width: 100%;
+            width: 72mm;
+            max-width: 72mm;
             margin: 0 auto;
+            padding: 6px 4px;
             font-size: 11px;
             line-height: 1.4;
+            box-sizing: border-box;
           }
           .text-center {
             text-align: center;
@@ -514,11 +519,14 @@ export default function PaymentModal({
         <style>
           @page {
             margin: 0;
-            size: auto;
+            size: 80mm auto;
+          }
+          * {
+            box-sizing: border-box;
           }
           body {
             margin: 0;
-            padding: 4px 6px;
+            padding: 0;
             font-family: 'Tahoma', 'Arial', 'Segoe UI', sans-serif;
             background: white;
             color: black;
@@ -527,11 +535,13 @@ export default function PaymentModal({
             -webkit-print-color-adjust: exact;
           }
           .kitchen-container {
-            width: 100%;
-            max-width: 270px;
+            width: 72mm;
+            max-width: 72mm;
             margin: 0 auto;
+            padding: 6px 4px;
             font-size: 13px;
             line-height: 1.4;
+            box-sizing: border-box;
           }
           .text-center {
             text-align: center;

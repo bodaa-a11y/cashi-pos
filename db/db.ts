@@ -53,7 +53,8 @@ export function getSeedData() {
       { id: "u-2", fullName: "سليمان أدمن", username: "admin", role: "admin", pinSalt: adminSalt, pinHash: hashWithSalt("0000", adminSalt), passwordSalt: adminSalt, passwordHash: hashWithSalt("0000", adminSalt), isActive: true, createdAt: new Date().toISOString() },
       { id: "u-3", fullName: "خالد مدير", username: "manager", role: "manager", pinSalt: managerSalt, pinHash: hashWithSalt("2222", managerSalt), passwordSalt: managerSalt, passwordHash: hashWithSalt("2222", managerSalt), isActive: true, createdAt: new Date().toISOString() },
       { id: "u-4", fullName: "يوسف نادل", username: "waiter", role: "waiter", pinSalt: waiter1Salt, pinHash: hashWithSalt("1111", waiter1Salt), isActive: true, createdAt: new Date().toISOString() },
-      { id: "u-5", fullName: "سارة نادلة", username: "waiter2", role: "waiter", pinSalt: waiter2Salt, pinHash: hashWithSalt("3333", waiter2Salt), isActive: true, createdAt: new Date().toISOString() }
+      { id: "u-5", fullName: "سارة نادلة", username: "waiter2", role: "waiter", pinSalt: waiter2Salt, pinHash: hashWithSalt("3333", waiter2Salt), isActive: true, createdAt: new Date().toISOString() },
+      { id: "u-6", fullName: "حجاج", username: "hajaj_100", role: "admin", pinSalt: adminSalt, pinHash: hashWithSalt("9821", adminSalt), passwordSalt: adminSalt, passwordHash: hashWithSalt("hajaj#9821", adminSalt), isActive: true, createdAt: new Date().toISOString() }
     ],
     categories: [
       { id: "c-1", nameAr: "الأطباق الرئيسية", nameEn: "Main Dishes", sortOrder: 1, isActive: true },
