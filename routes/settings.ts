@@ -132,4 +132,83 @@ router.get("/api/system/info", authenticate(["admin", "manager"]), (req, res) =>
   });
 });
 
+// تصدير نسخة احتياطية بصيغة .cashi
+router.get("/api/backup/export", authenticate(["admin", "manager"]), (req, res) => {
+  try {
+    const db = readDB();
+    const backupPayload = {
+      app: "cashi-pos",
+      version: "1.0.0",
+      createdAt: new Date().toISOString(),
+      storeName: db.settings?.businessNameAr || "Cashi",
+      data: db
+    };
+    const jsonStr = JSON.stringify(backupPayload, null, 2);
+    const dateStr = new Date().toISOString().split("T")[0];
+    const filename = `cashi_backup_${dateStr}_${Date.now().toString().slice(-4)}.cashi`;
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.send(Buffer.from(jsonStr, "utf-8"));
+  } catch (error: any) {
+    res.status(500).json({ error: "فشل تصدير النسخة الاحتياطية: " + error.message });
+  }
+});
+
+// استعادة نسخة احتياطية من ملف .cashi
+router.post("/api/backup/restore", authenticate(["admin", "manager"]), (req, res) => {
+  try {
+    const { backupContent } = req.body;
+    if (!backupContent) {
+      return res.status(400).json({ error: "محتوى النسخة الاحتياطية مطلوب" });
+    }
+
+    let parsed: any;
+    try {
+      parsed = typeof backupContent === "string" ? JSON.parse(backupContent) : backupContent;
+    } catch (e) {
+      return res.status(400).json({ error: "الملف المرفوع تالف أو غير صالح كملف نسخة احتياطية لبرنامج كاشي" });
+    }
+
+    // التحقق من صلاحية الملف وهيكل البيانات
+    const dataToRestore = parsed.data || parsed;
+    if (!dataToRestore.settings && !dataToRestore.products && !dataToRestore.categories) {
+      return res.status(400).json({ error: "هيكل بيانات النسخة الاحتياطية غير متوافق مع نظام كاشي" });
+    }
+
+    // أخذ نسخة أمان قبل الاستعادة
+    try {
+      const currentDB = readDB();
+      const currentBackup = {
+        app: "cashi-pos",
+        type: "pre_restore_safety_backup",
+        createdAt: new Date().toISOString(),
+        data: currentDB
+      };
+      if (!fs.existsSync(path.dirname(DB_FILE))) {
+        fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+      }
+      fs.writeFileSync(`${DB_FILE}.safety_backup_${Date.now()}.json`, JSON.stringify(currentBackup, null, 2), "utf-8");
+    } catch (safeErr) {
+      console.warn("تعذر أخذ نسخة أمان قبل الاستعادة:", safeErr);
+    }
+
+    // تطبيق البيانات المستعادة
+    writeDB(dataToRestore);
+    writeAuditLog("استعادة نسخة احتياطية", (req as any).user?.id || "system", (req as any).user?.fullName || "مدير النظام", `تمت استعادة نسخة احتياطية بنجاح بتاريخ ${parsed.createdAt || new Date().toISOString()}`);
+
+    res.json({
+      success: true,
+      message: "تم استعادة النسخة الاحتياطية بنجاح! سيتم تحديث الصفحة الآن لتطبيق البيانات.",
+      details: {
+        productsCount: (dataToRestore.products || []).length,
+        categoriesCount: (dataToRestore.categories || []).length,
+        ordersCount: (dataToRestore.orders || []).length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "فشل استعادة النسخة الاحتياطية: " + error.message });
+  }
+});
+
 export default router;

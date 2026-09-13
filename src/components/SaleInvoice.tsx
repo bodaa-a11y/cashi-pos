@@ -45,6 +45,7 @@ interface SaleInvoiceProps {
     tableId?: string | null;
     waiterId?: string | null;
     customerId?: string | null;
+    notes?: string;
   }) => void;
   onOpenHeldList: () => void;
   heldCount: number;
@@ -97,6 +98,14 @@ export default function SaleInvoice({
 
   const [editingCartItemIndex, setEditingCartItemIndex] = useState<number | null>(null);
   const [itemNotesInput, setItemNotesInput] = useState("");
+
+  // Sizing modal for items with sizes (e.g. Pizza small/medium/large)
+  const [selectedGroupForSize, setSelectedGroupForSize] = useState<{
+    baseName: string;
+    image?: string | null;
+    categoryName?: string;
+    variants: Array<{ product: Product; sizeName: string }>;
+  } | null>(null);
 
   const [loadingMenu, setLoadingMenu] = useState(false);
 
@@ -439,8 +448,57 @@ export default function SaleInvoice({
     return matchesSearch && matchesCategory && matchesFavorites;
   });
 
+  // تجميع الأصناف الذكي للأحجام (صغير / وسط / كبير) لتسهيل الاختيار
+  const sizeWords = ["صغير", "وسط", "كبير", "عائلي", "ميني", "دبل", "صاروخ", "جامبو"];
+  const sizeRegex = new RegExp(`\\s*(${sizeWords.join("|")})\\s*$`, "i");
+
+  const displayGroups = React.useMemo(() => {
+    const groupMap = new Map<string, {
+      id: string;
+      baseName: string;
+      nameEn?: string;
+      image?: string | null;
+      categoryId: string;
+      variants: Array<{ product: Product; sizeName: string }>;
+      minPrice: number;
+      maxPrice: number;
+      singleProduct?: Product;
+    }>();
+
+    filteredProducts.forEach((prod) => {
+      const match = prod.nameAr.match(sizeRegex);
+      const baseName = match ? prod.nameAr.replace(sizeRegex, "").trim() : prod.nameAr.trim();
+      const sizeName = match ? match[1] : "";
+
+      const groupKey = `${prod.categoryId}___${baseName}`;
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          id: prod.id,
+          baseName,
+          nameEn: prod.nameEn ? prod.nameEn.replace(/\b(small|medium|large|jumbo|double)\b/gi, "").trim() : "",
+          image: prod.image,
+          categoryId: prod.categoryId,
+          variants: [{ product: prod, sizeName: sizeName || "قياسي" }],
+          minPrice: prod.price,
+          maxPrice: prod.price,
+          singleProduct: prod
+        });
+      } else {
+        const existing = groupMap.get(groupKey)!;
+        existing.variants.push({ product: prod, sizeName: sizeName || "قياسي" });
+        existing.minPrice = Math.min(existing.minPrice, prod.price);
+        existing.maxPrice = Math.max(existing.maxPrice, prod.price);
+        // إذا كان هناك أكثر من منتج في المجموعة يلغى singleProduct
+        existing.singleProduct = undefined;
+      }
+    });
+
+    return Array.from(groupMap.values());
+  }, [filteredProducts]);
+
   return (
-    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-stone-100">
+    <div className="flex-1 h-full flex flex-col md:flex-row overflow-hidden bg-stone-100">
       
       {/* LEFT COLUMN: Checkout Details (30% width) */}
       <CheckoutColumn
@@ -702,7 +760,7 @@ export default function SaleInvoice({
               <div className="w-10 h-10 border-4 border-[#2E7D32] border-t-transparent rounded-full animate-spin mx-auto"></div>
               <p className="text-sm text-stone-500 font-bold">جاري تحميل قائمة المأكولات والمشروبات من السيرفر...</p>
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : displayGroups.length === 0 ? (
             <div className="py-24 text-center space-y-2">
               <ShoppingCart className="w-12 h-12 text-stone-300 mx-auto" />
               <p className="text-sm font-bold text-stone-500">لا توجد نتائج للبحث حالياً</p>
@@ -710,55 +768,92 @@ export default function SaleInvoice({
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-              {filteredProducts.map((prod) => (
-                <div
-                  key={prod.id}
-                  onClick={() => handleAddToCart(prod)}
-                  className="bg-white border border-stone-200 hover:border-green-400 rounded-2xl p-3 shadow-sm hover:shadow transition-all cursor-pointer flex flex-col justify-between text-right h-40 group relative overflow-hidden"
-                >
-                  {/* Quick plus indicator on hover */}
-                  <span className="absolute left-2.5 top-2.5 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow shadow-green-200">
-                    <Plus className="w-4 h-4" />
-                  </span>
+              {displayGroups.map((group) => {
+                const isMulti = group.variants.length > 1;
+                const catObj = categories.find(c => c.id === group.categoryId);
 
-                   {/* Thumbnail / placeholder circle */}
-                  {prod.image ? (
-                    <img
-                      src={prod.image.startsWith('data:') ? prod.image : `/uploads/${prod.image}`}
-                      alt={prod.nameAr}
-                      className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0 border border-stone-100"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-[#EAF4EA] flex items-center justify-center text-[#2E7D32] shrink-0 font-bold text-xs shadow-sm">
-                      {prod.nameAr.slice(0, 2)}
+                return (
+                  <div
+                    key={group.id}
+                    onClick={() => {
+                      if (isMulti) {
+                        setSelectedGroupForSize({
+                          baseName: group.baseName,
+                          image: group.image,
+                          categoryName: catObj?.nameAr,
+                          variants: group.variants
+                        });
+                      } else {
+                        handleAddToCart(group.variants[0].product);
+                      }
+                    }}
+                    className="bg-white border border-stone-200 hover:border-green-500 hover:shadow-md rounded-2xl p-3 shadow-sm transition-all cursor-pointer flex flex-col justify-between text-right h-44 group relative overflow-hidden active:scale-95"
+                  >
+                    {/* Multi-size badge / Plus indicator */}
+                    <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1">
+                      {isMulti ? (
+                        <span className="bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-md shadow-sm">
+                          {group.variants.length} أحجام
+                        </span>
+                      ) : (
+                        <span className="bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow shadow-green-200">
+                          <Plus className="w-4 h-4" />
+                        </span>
+                      )}
                     </div>
-                  )}
 
-                  {/* Body text */}
-                  <div className="space-y-1 mt-3">
-                    <h4 className="text-xs font-extrabold text-stone-800 line-clamp-2 leading-snug">
-                      {prod.nameAr}
-                    </h4>
-                    {prod.nameEn && (
-                      <p className="text-[9px] text-stone-400 font-mono font-medium truncate uppercase">
-                        {prod.nameEn}
-                      </p>
+                    {/* Thumbnail / placeholder circle */}
+                    {group.image ? (
+                      <img
+                        src={group.image.startsWith("data:") ? group.image : `/uploads/${group.image}`}
+                        alt={group.baseName}
+                        className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0 border border-stone-100"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-[#EAF4EA] flex items-center justify-center text-[#2E7D32] shrink-0 font-extrabold text-sm shadow-sm group-hover:bg-[#2E7D32] group-hover:text-white transition-all">
+                        {group.baseName.slice(0, 2)}
+                      </div>
                     )}
-                  </div>
 
-                  {/* Pricing footer */}
-                  <div className="flex items-center justify-between border-t border-stone-100 pt-2 mt-2">
-                    <span className="text-[10px] font-bold text-[#2E7D32] font-mono bg-green-50 px-2 py-0.5 rounded">
-                      {prod.price.toFixed(2)} ر.س
-                    </span>
-                    {prod.trackInventory && (
-                      <span className="text-[8px] font-bold text-stone-400">
-                        متاح: {prod.quantity} حبة
-                      </span>
-                    )}
+                    {/* Body text */}
+                    <div className="space-y-1 mt-2">
+                      <h4 className="text-xs font-extrabold text-stone-800 line-clamp-2 leading-snug">
+                        {group.baseName}
+                      </h4>
+                      {group.nameEn && (
+                        <p className="text-[9px] text-stone-400 font-mono font-medium truncate uppercase">
+                          {group.nameEn}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Pricing footer */}
+                    <div className="flex items-center justify-between border-t border-stone-100 pt-2 mt-2">
+                      {isMulti ? (
+                        <span className="text-[10px] font-bold text-amber-700 font-mono bg-amber-50 px-2 py-0.5 rounded">
+                          من {group.minPrice.toFixed(2)} ر.س
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-[#2E7D32] font-mono bg-green-50 px-2 py-0.5 rounded">
+                          {group.minPrice.toFixed(2)} ر.س
+                        </span>
+                      )}
+                      
+                      {isMulti ? (
+                        <span className="text-[9px] font-bold text-[#2E7D32] bg-green-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          اختر الحجم 👈
+                        </span>
+                      ) : (
+                        group.variants[0]?.product?.trackInventory && (
+                          <span className="text-[8px] font-bold text-stone-400">
+                            متاح: {group.variants[0].product.quantity}
+                          </span>
+                        )
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -987,6 +1082,84 @@ export default function SaleInvoice({
                   className="px-6 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow"
                 >
                   تطبيق الخصم للسلة
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: QUICK SIZE SELECTION (صغير / وسط / كبير) */}
+      {selectedGroupForSize && (
+        <div className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden text-right animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="bg-[#2E7D32] text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">
+                {selectedGroupForSize.categoryName || "اختيار الحجم"}
+              </span>
+              <h3 className="text-base font-extrabold flex items-center gap-1.5">
+                <span>{selectedGroupForSize.baseName}</span>
+              </h3>
+              <button
+                onClick={() => setSelectedGroupForSize(null)}
+                className="p-1 hover:bg-white/20 rounded-lg text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-stone-500 font-bold text-center">
+                اختر الحجم المطلوب لإضافته مباشرة إلى الفاتورة:
+              </p>
+
+              <div className="grid grid-cols-1 gap-3">
+                {selectedGroupForSize.variants.map((v) => (
+                  <button
+                    key={v.product.id}
+                    onClick={() => {
+                      handleAddToCart(v.product);
+                      setSelectedGroupForSize(null);
+                    }}
+                    className="w-full p-4 rounded-2xl border-2 border-stone-200 hover:border-[#2E7D32] hover:bg-green-50/60 bg-white flex items-center justify-between group transition-all shadow-sm active:scale-[0.98]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-100 group-hover:bg-[#2E7D32] text-[#2E7D32] group-hover:text-white flex items-center justify-center font-extrabold text-sm transition-all shadow-sm">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div className="text-right">
+                        <span className="font-extrabold text-sm text-stone-800 group-hover:text-[#2E7D32] block">
+                          حجم {v.sizeName}
+                        </span>
+                        <span className="text-[11px] text-stone-400">
+                          {v.product.nameAr}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-left">
+                      <span className="text-base font-mono font-extrabold text-[#2E7D32] bg-green-50 group-hover:bg-green-100 px-3 py-1 rounded-xl block">
+                        {v.product.price.toFixed(2)} ر.س
+                      </span>
+                      {v.product.trackInventory && (
+                        <span className="text-[9px] font-bold text-stone-400 block mt-0.5">
+                          متاح: {v.product.quantity}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupForSize(null)}
+                  className="px-6 py-2 text-xs font-bold text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-all"
+                >
+                  إلغاء التراجع
                 </button>
               </div>
             </div>

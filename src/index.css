@@ -24,13 +24,19 @@ html {
   background-color: var(--color-brand-bg);
   color: var(--color-brand-text);
   direction: rtl;
+  height: 100%;
 }
 
 body {
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
   user-select: none; /* Ideal for POS/touch terminals */
+}
+
+#root {
+  height: 100%;
 }
 
 /* Custom scrollbars */

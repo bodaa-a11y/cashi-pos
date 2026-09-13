@@ -51,13 +51,44 @@ router.post("/api/categories", authenticate(["admin", "manager"]), (req, res) =>
   const newCat = {
     id: `c-${Date.now()}`,
     nameAr,
-    nameEn,
+    nameEn: nameEn || "",
     sortOrder: sortOrder || db.categories.length + 1,
     isActive: true
   };
   db.categories.push(newCat);
   writeDB(db);
   res.json(newCat);
+});
+
+// تعديل فئة تصنيف
+router.put("/api/categories/:id", authenticate(["admin", "manager"]), (req, res) => {
+  const { id } = req.params;
+  const { nameAr, nameEn, sortOrder } = req.body;
+  const db = readDB();
+  const cat = db.categories.find((c: any) => c.id === id);
+  if (!cat) {
+    return res.status(404).json({ error: "الفئة غير موجودة" });
+  }
+  if (nameAr) cat.nameAr = nameAr;
+  if (nameEn !== undefined) cat.nameEn = nameEn;
+  if (sortOrder !== undefined) cat.sortOrder = Number(sortOrder);
+  cat.updatedAt = new Date().toISOString();
+  writeDB(db);
+  res.json(cat);
+});
+
+// حذف فئة تصنيف (تعطيل الفئة)
+router.delete("/api/categories/:id", authenticate(["admin", "manager"]), (req, res) => {
+  const { id } = req.params;
+  const db = readDB();
+  const cat = db.categories.find((c: any) => c.id === id);
+  if (!cat) {
+    return res.status(404).json({ error: "الفئة غير موجودة" });
+  }
+  cat.isActive = false;
+  cat.deletedAt = new Date().toISOString();
+  writeDB(db);
+  res.json({ success: true, message: "تم حذف الفئة بنجاح" });
 });
 
 // إضافة صنف منتج جديد بالمنيو

@@ -68,7 +68,7 @@ export default function CheckoutColumn({
   handleProceedToPayment
 }: CheckoutColumnProps) {
   return (
-    <aside className="w-full md:w-[32%] bg-white border-l border-stone-200 flex flex-col overflow-hidden shrink-0">
+    <aside className="w-full md:w-[32%] lg:w-[30%] h-full max-h-full bg-white border-l border-stone-200 flex flex-col overflow-hidden shrink-0">
       
       {/* Header toolbar */}
       <div className="bg-[#2E7D32] text-white p-4 shrink-0 flex items-center justify-between">

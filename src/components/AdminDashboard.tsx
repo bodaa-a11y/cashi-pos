@@ -204,9 +204,16 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     imageBase64: ""
   });
 
+  // Menu management subtab and category editing states
+  const [menuSubTab, setMenuSubTab] = useState<"products" | "categories">("products");
+  const [selectedMenuCategory, setSelectedMenuCategory] = useState<string>("all");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [newCategoryNameAr, setNewCategoryNameAr] = useState("");
-  const [newCategoryNameEn, setNewCategoryNameEn] = useState("");
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryForm, setCategoryForm] = useState({
+    nameAr: "",
+    nameEn: "",
+    sortOrder: 1
+  });
 
   // Staff Management State
   const [showUserModal, setShowUserModal] = useState(false);
@@ -223,6 +230,77 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [searchQuery, setSearchQuery] = useState("");
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  // Backup & Restore states
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreStatus, setRestoreStatus] = useState<string | null>(null);
+
+  // تصدير وتحميل ملف النسخة الاحتياطية بصيغة .cashi
+  const handleExportBackup = async () => {
+    try {
+      setBackupLoading(true);
+      const res = await fetch("/api/backup/export");
+      if (!res.ok) {
+        throw new Error("فشل تصدير النسخة الاحتياطية من السيرفر");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateStr = new Date().toISOString().split("T")[0];
+      a.download = `cashi_backup_${dateStr}.cashi`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      alert("✅ تم تحميل ملف النسخة الاحتياطية (.cashi) بنجاح على جهازك! احتفظ به في مكان آمن.");
+    } catch (e: any) {
+      alert("❌ خطأ أثناء إنشاء النسخة الاحتياطية: " + e.message);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  // استعادة قاعدة البيانات من ملف .cashi
+  const handleRestoreBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("⚠️ تحذير أمني هام:\nهل أنت متأكد من استعادة هذه النسخة الاحتياطية؟ سيتم استبدال البيانات الحالية بالبيانات الموجودة في الملف.\n(يقوم النظام تلقائياً بأخذ نسخة أمان احتياطية قبل الاستعادة).")) {
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      setRestoreLoading(true);
+      setRestoreStatus("جاري قراءة ملف النسخة الاحتياطية والتحقق منه...");
+      const text = await file.text();
+
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backupContent: text })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "فشل استعادة النسخة الاحتياطية");
+      }
+
+      alert(`✅ ${result.message}\nعدد الأصناف المستعادة: ${result.details?.productsCount || 0}\nعدد الفئات المستعادة: ${result.details?.categoriesCount || 0}`);
+      // إعادة تحميل بيانات لوحة التحكم
+      fetchAllData();
+      // إعادة تحميل الصفحة بالكامل لضمان تحديث كل الحالات
+      window.location.reload();
+    } catch (err: any) {
+      alert("❌ خطأ أثناء استعادة النسخة الاحتياطية: " + err.message);
+    } finally {
+      setRestoreLoading(false);
+      setRestoreStatus(null);
+      e.target.value = "";
+    }
+  };
 
   const fetchAnalytics = async () => {
     try {
@@ -1022,30 +1100,66 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     }
   };
 
+  const handleOpenAddCategory = () => {
+    setEditingCategory(null);
+    setCategoryForm({
+      nameAr: "",
+      nameEn: "",
+      sortOrder: categories.length + 1
+    });
+    setShowCategoryModal(true);
+  };
+
+  const handleOpenEditCategory = (cat: Category) => {
+    setEditingCategory(cat);
+    setCategoryForm({
+      nameAr: cat.nameAr,
+      nameEn: cat.nameEn || "",
+      sortOrder: cat.sortOrder || 1
+    });
+    setShowCategoryModal(true);
+  };
+
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCategoryNameAr || !newCategoryNameEn) {
-      alert("يرجى تعبئة أسماء الفئة باللغتين");
+    if (!categoryForm.nameAr) {
+      alert("يرجى إدخال اسم الفئة بالعربي");
       return;
     }
 
     try {
-      const res = await fetch("/api/categories", {
-        method: "POST",
+      const url = editingCategory ? `/api/categories/${editingCategory.id}` : "/api/categories";
+      const method = editingCategory ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameAr: newCategoryNameAr,
-          nameEn: newCategoryNameEn
-        })
+        body: JSON.stringify(categoryForm)
       });
 
       if (res.ok) {
         setShowCategoryModal(false);
-        setNewCategoryNameAr("");
-        setNewCategoryNameEn("");
+        setEditingCategory(null);
+        setCategoryForm({ nameAr: "", nameEn: "", sortOrder: 1 });
         fetchAllData();
       } else {
-        alert("فشل إنشاء الفئة");
+        alert("فشل حفظ الفئة");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`هل أنت متأكد من رغبتك في حذف قسم "${name}"؟ لن يتم حذف الأصناف التابعة له بل ستصبح غير محددة.`)) return;
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        fetchAllData();
+      } else {
+        alert("فشل حذف الفئة");
       }
     } catch (e) {
       console.error(e);
@@ -1647,121 +1761,285 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           )}
 
           {activeTab === "menu" && (
-            <div className="space-y-6">
+            <div className="space-y-6 text-right">
               
-              {/* Menu manager buttons */}
-              <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                <div className="flex gap-2">
+              {/* Menu Sub-tabs (الأصناف والمنتجات vs الأقسام والتصنيفات) */}
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white border border-stone-200 p-4 rounded-2xl shadow-sm">
+                <div className="flex gap-2 bg-stone-100 p-1 rounded-xl">
                   <button
-                    onClick={() => {
-                      setEditingProduct(null);
-                      setProductForm({
-                        nameAr: "",
-                        nameEn: "",
-                        categoryId: categories[0]?.id || "",
-                        price: "",
-                        cost: "",
-                        trackInventory: false,
-                        quantity: ""
-                      });
-                      setShowProductModal(true);
-                    }}
-                    className="px-4 py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all"
+                    onClick={() => setMenuSubTab("products")}
+                    className={`px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      menuSubTab === "products"
+                        ? "bg-[#2E7D32] text-white shadow"
+                        : "text-stone-600 hover:bg-stone-200/60"
+                    }`}
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>إضافة صنف منتج جديد</span>
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>قائمة الأصناف والمنتجات ({products.length})</span>
                   </button>
 
                   <button
-                    onClick={() => setShowCategoryModal(true)}
-                    className="px-4 py-2.5 border border-[#2E7D32] text-[#2E7D32] hover:bg-green-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+                    onClick={() => setMenuSubTab("categories")}
+                    className={`px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      menuSubTab === "categories"
+                        ? "bg-[#2E7D32] text-white shadow"
+                        : "text-stone-600 hover:bg-stone-200/60"
+                    }`}
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>إضافة فئة رئيسية</span>
+                    <List className="w-4 h-4" />
+                    <span>إدارة الأقسام والتصنيفات ({categories.length})</span>
                   </button>
                 </div>
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="ابحث بالاسم العربي أو الإنجليزي..."
-                    className="w-full pr-9 pl-3 py-2 border border-stone-200 rounded-xl bg-white text-xs text-right focus:outline-none focus:border-[#2E7D32]"
-                  />
+                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                  {menuSubTab === "products" ? (
+                    <button
+                      onClick={() => {
+                        setEditingProduct(null);
+                        setProductForm({
+                          nameAr: "",
+                          nameEn: "",
+                          categoryId: selectedMenuCategory !== "all" ? selectedMenuCategory : (categories[0]?.id || ""),
+                          price: "",
+                          cost: "",
+                          trackInventory: false,
+                          quantity: "",
+                          image: "",
+                          imageBase64: ""
+                        });
+                        setShowProductModal(true);
+                      }}
+                      className="px-5 py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-extrabold shadow flex items-center gap-2 transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>إضافة صنف جديد</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleOpenAddCategory}
+                      className="px-5 py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-extrabold shadow flex items-center gap-2 transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>إضافة قسم جديد</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Table list products */}
-              <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
-                    <tr>
-                      <th className="p-4">اسم المنتج (عربي)</th>
-                      <th className="p-4">اسم المنتج (EN)</th>
-                      <th className="p-4">الفئة</th>
-                      <th className="p-4 text-left">سعر البيع</th>
-                      <th className="p-4 text-left">تكلفة المنتج</th>
-                      <th className="p-4 text-center">تتبع المستودع</th>
-                      <th className="p-4 text-center">الكمية المتوفرة</th>
-                      <th className="p-4 text-center">خيارات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 font-medium">
-                    {filteredProducts.map((prod) => {
-                      const cat = categories.find(c => c.id === prod.categoryId);
+              {/* VIEW 1: CATEGORIES MANAGEMENT */}
+              {menuSubTab === "categories" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-stone-800 text-sm">أقسام المنيو وتصنيفاته</h3>
+                      <p className="text-xs text-stone-400 mt-0.5">يمكنك هنا تعديل أسماء الأقسام، ترتيبها، أو إضافة وحذف أي قسم بسهولة.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {categories.map((cat, idx) => {
+                      const count = products.filter(p => p.categoryId === cat.id).length;
                       return (
-                        <tr key={prod.id} className="hover:bg-stone-50/50">
-                          <td className="p-4 font-bold text-stone-800">{prod.nameAr}</td>
-                          <td className="p-4 text-stone-500 font-mono">{prod.nameEn || "-"}</td>
-                          <td className="p-4 text-stone-600 font-bold">{cat ? cat.nameAr : "غير محدد"}</td>
-                          <td className="p-4 text-left font-bold font-mono text-[#2E7D32]">{prod.price.toFixed(2)} ر.س</td>
-                          <td className="p-4 text-left font-mono text-stone-500">{prod.cost.toFixed(2)} ر.س</td>
-                          <td className="p-4 text-center font-bold">
-                            {prod.trackInventory ? (
-                              <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded text-[10px]">نعم</span>
-                            ) : (
-                              <span className="bg-stone-100 text-stone-500 px-2 py-0.5 rounded text-[10px]">لا</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-center font-mono font-bold text-stone-700">{prod.trackInventory ? prod.quantity : "∞"}</td>
-                          <td className="p-4 flex gap-1.5 justify-center">
+                        <div
+                          key={cat.id}
+                          className="bg-white border border-stone-200 hover:border-green-400 rounded-2xl p-5 shadow-sm transition-all flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="w-8 h-8 rounded-xl bg-green-50 text-[#2E7D32] font-mono font-extrabold text-xs flex items-center justify-center border border-green-200">
+                              #{idx + 1}
+                            </span>
+                            <span className="bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              {count} صنف
+                            </span>
+                          </div>
+
+                          <div className="my-4">
+                            <h4 className="font-extrabold text-stone-800 text-base">{cat.nameAr}</h4>
+                            <p className="text-xs text-stone-400 font-mono mt-1">{cat.nameEn || "-"}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between border-t border-stone-100 pt-3">
                             <button
                               onClick={() => {
-                                setEditingProduct(prod);
-                                setProductForm({
-                                  nameAr: prod.nameAr,
-                                  nameEn: prod.nameEn || "",
-                                  categoryId: prod.categoryId,
-                                  price: String(prod.price),
-                                  cost: String(prod.cost),
-                                  trackInventory: prod.trackInventory,
-                                  quantity: String(prod.quantity || 0),
-                                  image: prod.image || "",
-                                  imageBase64: ""
-                                });
-                                setShowProductModal(true);
+                                setSelectedMenuCategory(cat.id);
+                                setMenuSubTab("products");
                               }}
-                              className="p-1.5 text-stone-500 hover:text-[#2E7D32] hover:bg-green-50 rounded"
-                              title="تعديل المنتج"
+                              className="text-[11px] font-bold text-[#2E7D32] hover:underline"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              عرض الأصناف 👈
                             </button>
-                            <button
-                              onClick={() => handleDeleteProduct(prod.id)}
-                              className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="حذف المنتج"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
+
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => handleOpenEditCategory(cat)}
+                                className="p-2 text-stone-500 hover:text-[#2E7D32] hover:bg-green-50 rounded-xl transition-all"
+                                title="تعديل اسم القسم"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCategory(cat.id, cat.nameAr)}
+                                className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                title="حذف القسم"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW 2: PRODUCTS MANAGEMENT WITH CATEGORY TABS & SEARCH */}
+              {menuSubTab === "products" && (
+                <div className="space-y-4">
+                  {/* Category Filter Chips Bar */}
+                  <div className="bg-white border border-stone-200 rounded-2xl p-3 flex gap-2 overflow-x-auto scrollbar-none items-center">
+                    <span className="text-xs font-extrabold text-stone-500 shrink-0 ml-2">تصفية حسب القسم:</span>
+                    <button
+                      onClick={() => setSelectedMenuCategory("all")}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                        selectedMenuCategory === "all"
+                          ? "bg-[#2E7D32] border-[#2E7D32] text-white shadow-sm"
+                          : "border-stone-200 hover:bg-stone-50 text-stone-600"
+                      }`}
+                    >
+                      الكل ({products.length})
+                    </button>
+                    {categories.map((c) => {
+                      const cCount = products.filter(p => p.categoryId === c.id).length;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => setSelectedMenuCategory(c.id)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                            selectedMenuCategory === c.id
+                              ? "bg-[#2E7D32] border-[#2E7D32] text-white shadow-sm"
+                              : "border-stone-200 hover:bg-stone-50 text-stone-600"
+                          }`}
+                        >
+                          {c.nameAr} ({cCount})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative w-full">
+                    <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ابحث بالاسم العربي، الإنجليزي، أو الباركود..."
+                      className="w-full pr-10 pl-4 py-2.5 border border-stone-200 rounded-xl bg-white text-xs text-right focus:outline-none focus:border-[#2E7D32] shadow-sm"
+                    />
+                  </div>
+
+                  {/* Table list products */}
+                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-stone-50 border-b border-stone-100 text-stone-500 font-bold">
+                        <tr>
+                          <th className="p-4">الصورة</th>
+                          <th className="p-4">اسم المنتج (عربي)</th>
+                          <th className="p-4">الاسم بالإنجليزية</th>
+                          <th className="p-4">القسم التابع له</th>
+                          <th className="p-4 text-left">سعر البيع</th>
+                          <th className="p-4 text-left">التكلفة</th>
+                          <th className="p-4 text-center">المستودع</th>
+                          <th className="p-4 text-center">الكمية</th>
+                          <th className="p-4 text-center">خيارات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-medium">
+                        {products
+                          .filter((prod) => {
+                            const matchCat = selectedMenuCategory === "all" || prod.categoryId === selectedMenuCategory;
+                            const matchSearch =
+                              !searchQuery ||
+                              prod.nameAr.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              (prod.nameEn && prod.nameEn.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                              (prod.barcode && prod.barcode.includes(searchQuery));
+                            return matchCat && matchSearch;
+                          })
+                          .map((prod) => {
+                            const cat = categories.find(c => c.id === prod.categoryId);
+                            return (
+                              <tr key={prod.id} className="hover:bg-stone-50/50">
+                                <td className="p-3">
+                                  {prod.image ? (
+                                    <img
+                                      src={prod.image.startsWith("data:") ? prod.image : `/uploads/${prod.image}`}
+                                      alt={prod.nameAr}
+                                      className="w-10 h-10 rounded-lg object-cover border border-stone-200 shadow-sm"
+                                    />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-green-50 text-[#2E7D32] flex items-center justify-center font-bold text-xs border border-green-100">
+                                      {prod.nameAr.slice(0, 2)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-4 font-bold text-stone-800">{prod.nameAr}</td>
+                                <td className="p-4 text-stone-500 font-mono">{prod.nameEn || "-"}</td>
+                                <td className="p-4 text-stone-700 font-bold">
+                                  <span className="bg-stone-100 px-2.5 py-1 rounded-lg text-[11px]">
+                                    {cat ? cat.nameAr : "غير محدد"}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-left font-bold font-mono text-[#2E7D32]">{prod.price.toFixed(2)} ر.س</td>
+                                <td className="p-4 text-left font-mono text-stone-500">{prod.cost.toFixed(2)} ر.س</td>
+                                <td className="p-4 text-center font-bold">
+                                  {prod.trackInventory ? (
+                                    <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded text-[10px]">مفعل</span>
+                                  ) : (
+                                    <span className="bg-stone-100 text-stone-500 px-2 py-0.5 rounded text-[10px]">غير مفعل</span>
+                                  )}
+                                </td>
+                                <td className="p-4 text-center font-mono font-bold text-stone-700">
+                                  {prod.trackInventory ? prod.quantity : "—"}
+                                </td>
+                                <td className="p-4 flex gap-1.5 justify-center">
+                                  <button
+                                    onClick={() => {
+                                      setEditingProduct(prod);
+                                      setProductForm({
+                                        nameAr: prod.nameAr,
+                                        nameEn: prod.nameEn || "",
+                                        categoryId: prod.categoryId,
+                                        price: String(prod.price),
+                                        cost: String(prod.cost),
+                                        trackInventory: prod.trackInventory,
+                                        quantity: String(prod.quantity || 0),
+                                        image: prod.image || "",
+                                        imageBase64: ""
+                                      });
+                                      setShowProductModal(true);
+                                    }}
+                                    className="p-1.5 text-stone-500 hover:text-[#2E7D32] hover:bg-green-50 rounded-lg transition-all"
+                                    title="تعديل المنتج"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProduct(prod.id)}
+                                    className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                    title="حذف المنتج"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
             </div>
           )}
@@ -2782,6 +3060,80 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 )}
               </div>
 
+              {/* قسم النسخ الاحتياطي الخاص واستعادة البيانات بصيغة .cashi */}
+              <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="border-b border-stone-100 pb-3 flex items-center justify-between">
+                  <span className="text-[11px] bg-green-50 text-[#2E7D32] border border-green-200 px-3 py-1 rounded-full font-bold">
+                    حماية البيانات وتحديث البرنامج
+                  </span>
+                  <h3 className="font-extrabold text-stone-800 flex items-center gap-2 text-base">
+                    <Database className="w-5 h-5 text-[#2E7D32]" />
+                    <span>النسخ الاحتياطي واستعادة البيانات (.cashi)</span>
+                  </h3>
+                </div>
+
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  احفظ نسخة كاملة من بيانات المحل (الإعدادات، المنتجات، الأقسام، الطاولات، والمبيعات) بصيغة ملف كاشي المعتمد <code className="bg-stone-100 text-[#2E7D32] px-1.5 py-0.5 rounded font-bold font-mono">.cashi</code>. يمكنك استعادة هذا الملف في أي وقت، خاصة عند تحديث نسخة البرنامج أو نقل النظام لجهاز آخر لضمان عدم ضياع أي بيانات سابقة.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  
+                  {/* Export Box */}
+                  <div className="p-5 border-2 border-stone-100 hover:border-green-300 rounded-2xl bg-stone-50/50 space-y-3 flex flex-col justify-between transition-all">
+                    <div>
+                      <div className="flex items-center gap-2 text-stone-800 font-extrabold text-sm mb-1">
+                        <Download className="w-4 h-4 text-[#2E7D32]" />
+                        <span>تصدير نسخة احتياطية فورية</span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 leading-relaxed">
+                        يقوم بتجهيز وتحميل ملف <span className="font-mono font-bold text-stone-700">.cashi</span> يحتوي على جميع بيانات المنشأة والمبيعات حتى اللحظة الحالية.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={backupLoading}
+                      onClick={handleExportBackup}
+                      className="w-full py-3 bg-[#2E7D32] hover:bg-[#1B5E20] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    >
+                      <Download className={`w-4 h-4 ${backupLoading ? "animate-bounce" : ""}`} />
+                      <span>{backupLoading ? "جاري إنشاء النسخة..." : "تنزيل النسخة الاحتياطية (.cashi) 📥"}</span>
+                    </button>
+                  </div>
+
+                  {/* Restore Box */}
+                  <div className="p-5 border-2 border-amber-100 hover:border-amber-300 rounded-2xl bg-amber-50/40 space-y-3 flex flex-col justify-between transition-all">
+                    <div>
+                      <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm mb-1">
+                        <RefreshCw className="w-4 h-4 text-amber-600" />
+                        <span>استعادة نسخة احتياطية سابقة</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800/80 leading-relaxed">
+                        اختر ملف <span className="font-mono font-bold text-amber-900">.cashi</span> من جهازك لاسترجاع البيانات بالكامل مع أخذ نسخة أمان تلقائية للبيانات الحالية.
+                      </p>
+                    </div>
+
+                    <label className={`w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] ${restoreLoading ? "opacity-50 pointer-events-none" : ""}`}>
+                      <RefreshCw className={`w-4 h-4 ${restoreLoading ? "animate-spin" : ""}`} />
+                      <span>{restoreLoading ? (restoreStatus || "جاري الاستعادة...") : "اختيار ملف الاستعادة (.cashi) 📤"}</span>
+                      <input
+                        type="file"
+                        accept=".cashi,.json"
+                        disabled={restoreLoading}
+                        onChange={handleRestoreBackupFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                </div>
+
+                <div className="p-3 bg-stone-100 rounded-xl text-[11px] text-stone-500 flex items-center justify-between">
+                  <span>💡 <strong>نصيحة:</strong> يُفضل دائماً تنزيل نسخة احتياطية أسبوعياً وحفظها على فلاش ميموري خارجي.</span>
+                  <span className="font-mono font-bold text-stone-600">Cashi Safe Backup Engine</span>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -3016,9 +3368,9 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden text-right">
             <div className="bg-[#2E7D32] text-white p-5 flex items-center justify-between">
               <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-bold">
-                إنشاء فئة مبيعات
+                {editingCategory ? "تعديل قسم" : "إنشاء قسم جديد"}
               </span>
-              <h3 className="text-lg font-bold">أدخل اسم الفئة الجديدة</h3>
+              <h3 className="text-lg font-bold">{editingCategory ? `تعديل قسم: ${editingCategory.nameAr}` : "أدخل بيانات القسم الجديد"}</h3>
               <button onClick={() => setShowCategoryModal(false)} className="p-1 hover:bg-white/15 rounded text-white">
                 <X className="w-5 h-5" />
               </button>
@@ -3030,21 +3382,31 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 <input
                   type="text"
                   required
-                  value={newCategoryNameAr}
-                  onChange={(e) => setNewCategoryNameAr(e.target.value)}
+                  value={categoryForm.nameAr}
+                  onChange={(e) => setCategoryForm(c => ({ ...c, nameAr: e.target.value }))}
                   placeholder="مثال: الشوربات والمشروبات الساخنة"
                   className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">الاسم بالإنجليزي *</label>
+                <label className="block text-xs font-bold text-stone-700 mb-1">الاسم بالإنجليزي (اختياري)</label>
                 <input
                   type="text"
-                  required
-                  value={newCategoryNameEn}
-                  onChange={(e) => setNewCategoryNameEn(e.target.value)}
+                  value={categoryForm.nameEn}
+                  onChange={(e) => setCategoryForm(c => ({ ...c, nameEn: e.target.value }))}
                   placeholder="e.g. Hot Drinks & Soups"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">ترتيب العرض (رقم أولوية الظهور)</label>
+                <input
+                  type="number"
+                  value={categoryForm.sortOrder}
+                  onChange={(e) => setCategoryForm(c => ({ ...c, sortOrder: Number(e.target.value) }))}
+                  placeholder="1, 2, 3..."
                   className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none font-mono"
                 />
               </div>
@@ -3061,7 +3423,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                   type="submit"
                   className="px-6 py-2 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl text-xs font-bold shadow"
                 >
-                  حفظ الفئة في المنيو
+                  {editingCategory ? "حفظ التعديلات" : "إضافة القسم للمنيو"}
                 </button>
               </div>
             </form>

@@ -336,7 +336,7 @@ function CashiApp() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-stone-100 selection:bg-green-100 select-none">
+    <div className="h-screen w-screen flex flex-col bg-stone-100 selection:bg-green-100 select-none overflow-hidden">
       
       {/* Top Banner indicating unsynced offline queue */}
       {offlineOrders.length > 0 && (
