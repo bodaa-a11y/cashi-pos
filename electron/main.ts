@@ -153,6 +153,34 @@ async function startEmbeddedServer(): Promise<number> {
     } catch (err) {
       console.error('[كاشي] خطأ أثناء نسخ قالب قاعدة البيانات:', err);
     }
+  } else {
+    // إذا كان الملف موجوداً مسبقاً على جهاز الكاشير، نقوم بحذف الفواتير والورديات التجريبية القديمة لضمان البدء من الصفر
+    try {
+      const existingDataRaw = fs.readFileSync(dbPath, 'utf-8');
+      const existingData = JSON.parse(existingDataRaw);
+      let modified = false;
+
+      // تصفير الفواتير والورديات السابقة لتهيئة العمل الحقيقي
+      if (Array.isArray(existingData.orders) && existingData.orders.length > 0) {
+        existingData.orders = [];
+        modified = true;
+      }
+      if (Array.isArray(existingData.held_orders) && existingData.held_orders.length > 0) {
+        existingData.held_orders = [];
+        modified = true;
+      }
+      if (Array.isArray(existingData.shifts) && existingData.shifts.length > 0) {
+        existingData.shifts = [];
+        modified = true;
+      }
+
+      if (modified) {
+        fs.writeFileSync(dbPath, JSON.stringify(existingData, null, 2), 'utf-8');
+        console.log('[كاشي] 🧹 تم تصفير الفواتير والورديات القديمة بنجاح لبدء العمل الفعلي النظيف!');
+      }
+    } catch (cleanErr) {
+      console.warn('[كاشي] تحذير أثناء فحص وتنظيف البيانات القديمة:', cleanErr);
+    }
   }
 
   // إنشاء سيرفر Express
