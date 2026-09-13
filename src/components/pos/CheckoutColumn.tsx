@@ -35,7 +35,7 @@ interface CheckoutColumnProps {
   removeFromCart: (index: number) => void;
   handleOpenDiscountModal: () => void;
   handleHoldOrder: () => void;
-  handleProceedToPayment: () => void;
+  handleProceedToPayment: (shouldPrint?: boolean) => void;
 }
 
 export default function CheckoutColumn({
@@ -252,20 +252,35 @@ export default function CheckoutColumn({
         )}
 
         {/* Action row */}
-        <div className="grid grid-cols-2 gap-2 pt-2">
+        <div className="space-y-2 pt-2">
+          <div className="grid grid-cols-2 gap-2">
+            {/* دفع وطباعة فوري */}
+            <button
+              onClick={() => handleProceedToPayment(true)}
+              disabled={cart.length === 0}
+              className="py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+              title="دفع الفاتورة وطباعة الإيصال الحراري"
+            >
+              <span>🖨️ دفع وطباعة</span>
+            </button>
+
+            {/* دفع وحفظ فقط بدون طباعة */}
+            <button
+              onClick={() => handleProceedToPayment(false)}
+              disabled={cart.length === 0}
+              className="py-2.5 bg-stone-800 hover:bg-stone-900 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+              title="تسجيل الدفع وحفظ الفاتورة بدون طباعة ورقية"
+            >
+              <span>💾 دفع وحفظ فقط</span>
+            </button>
+          </div>
+
           <button
             onClick={handleHoldOrder}
             disabled={cart.length === 0}
-            className="py-2.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 text-amber-800 rounded-xl text-xs font-bold border border-amber-200 transition-all"
+            className="w-full py-2 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 text-amber-800 rounded-xl text-xs font-bold border border-amber-200 transition-all flex items-center justify-center gap-1"
           >
-            تعليق الفاتورة ⏸
-          </button>
-          <button
-            onClick={handleProceedToPayment}
-            disabled={cart.length === 0}
-            className="py-2.5 bg-[#2E7D32] hover:bg-[#1B5E20] disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow transition-all"
-          >
-            تسوية ودفع ⏎
+            <span>تعليق الفاتورة الحالية ⏸</span>
           </button>
         </div>
 

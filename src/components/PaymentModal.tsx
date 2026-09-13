@@ -56,6 +56,7 @@ interface PaymentModalProps {
   onCancel: () => void;
   isOnline: boolean;
   notes?: string;
+  defaultPrint?: boolean;
 }
 
 export default function PaymentModal({
@@ -76,6 +77,7 @@ export default function PaymentModal({
   onCancel,
   isOnline,
   notes,
+  defaultPrint = true,
 }: PaymentModalProps) {
   const [method, setMethod] = useState<"cash" | "card" | "split" | "credit">("cash");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("cust-1");
@@ -164,7 +166,7 @@ export default function PaymentModal({
     setTendered(String(amount));
   };
 
-  const handleConfirmPayment = async () => {
+  const handleConfirmPayment = async (shouldPrint: boolean = true) => {
     if (method === "cash" && tenderedValue < total) {
       setError("المبلغ المستلم أقل من إجمالي الفاتورة!");
       return;
@@ -718,8 +720,10 @@ export default function PaymentModal({
       const finalKitchenHtml = generateKitchenHTML(actualOrderNumber);
       setReceiptHTML(finalHtml);
 
-      // Trigger print with real order number
-      await printReceiptMockAndPhysical(actualOrderNumber, finalHtml, finalKitchenHtml, clientUuid, orderItems);
+      // Trigger print with real order number if requested
+      if (shouldPrint) {
+        await printReceiptMockAndPhysical(actualOrderNumber, finalHtml, finalKitchenHtml, clientUuid, orderItems);
+      }
 
       setSuccess(true);
     } catch (e) {
@@ -729,11 +733,13 @@ export default function PaymentModal({
       // Dispatch offline queue event to App.tsx
       window.dispatchEvent(new CustomEvent("pos-offline-order-added", { detail: orderDoc }));
 
-      // Trigger local mock print with local HTML
-      try {
-        await printReceiptMockAndPhysical(localOrderNumber, html, kitchenHTML, clientUuid, orderItems);
-      } catch (err) {
-        console.error("Local preview print failed:", err);
+      // Trigger local mock print with local HTML if requested
+      if (shouldPrint) {
+        try {
+          await printReceiptMockAndPhysical(localOrderNumber, html, kitchenHTML, clientUuid, orderItems);
+        } catch (err) {
+          console.error("Local preview print failed:", err);
+        }
       }
 
       setSuccess(true);
@@ -1051,22 +1057,35 @@ export default function PaymentModal({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 justify-end border-t border-stone-100 pt-4">
+            <div className="flex flex-wrap gap-2 justify-end border-t border-stone-100 pt-4">
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-5 py-3 border border-stone-200 text-stone-600 hover:bg-stone-50 rounded-xl font-bold text-sm transition-all"
+                className="px-4 py-3 border border-stone-200 text-stone-600 hover:bg-stone-50 rounded-xl font-bold text-xs transition-all"
               >
                 إلغاء التراجع
               </button>
+
+              {/* دุ่ม: دفع وحفظ فقط بدون طباعة */}
               <button
                 type="button"
-                onClick={handleConfirmPayment}
+                onClick={() => handleConfirmPayment(false)}
                 disabled={loading}
-                className="px-8 py-3.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-all"
+                className="px-5 py-3.5 bg-stone-800 hover:bg-stone-900 text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-2 transition-all active:scale-[0.98]"
               >
-                <Check className="w-4 h-4" />
-                <span>{loading ? "جاري تسوية الفاتورة..." : "تأكيد الدفع وطباعة الفاتورة ⏎"}</span>
+                <Check className="w-4 h-4 text-stone-300" />
+                <span>{loading ? "جاري الحفظ..." : "دفع وحفظ فقط (بدون طباعة) 💾"}</span>
+              </button>
+
+              {/* زر: تأكيد الدفع والطباعة الفورية */}
+              <button
+                type="button"
+                onClick={() => handleConfirmPayment(true)}
+                disabled={loading}
+                className="px-6 py-3.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{loading ? "جاري التسوية والطباعة..." : "دفع وطباعة الفاتورة 🖨️ ⏎"}</span>
               </button>
             </div>
 

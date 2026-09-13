@@ -46,6 +46,7 @@ interface SaleInvoiceProps {
     waiterId?: string | null;
     customerId?: string | null;
     notes?: string;
+    defaultPrint?: boolean;
   }) => void;
   onOpenHeldList: () => void;
   heldCount: number;
@@ -365,7 +366,7 @@ export default function SaleInvoice({
   };
 
   // Checkout payment bridge
-  const handleProceedToPayment = () => {
+  const handleProceedToPayment = (defaultPrint: boolean = true) => {
     if (cart.length === 0) {
       alert("السلة فارغة! أضف أطباقاً أولاً للبدء.");
       return;
@@ -391,7 +392,8 @@ export default function SaleInvoice({
       tableId: finalTable || null,
       waiterId: selectedWaiter || null,
       customerId: selectedCustomer?.id || null,
-      notes: orderType === "takeaway" ? selectedDeliveryApp : ""
+      notes: orderType === "takeaway" ? selectedDeliveryApp : "",
+      defaultPrint
     });
   };
 

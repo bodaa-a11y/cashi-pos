@@ -235,6 +235,62 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // تصفير الفواتير القديمة وتفريغ المبيعات للبدء الحقيقي (مع بقاء المنيو والأصناف والإعدادات)
+  const handleResetSalesOnly = async () => {
+    const confirmation = prompt("⚠️ تحذير شديد الأهمية:\nسيتم حذف وتصفير جميع الفواتير والمبيعات السابقة والورديات بالكامل للبدء الفعلي للنظام.\nستبقى إعدادات المنشأة وقائمة الأصناف والتصنيفات كما هي دون تغيير.\n\nلتأكيد العملية، يرجى كتابة كلمة (تصفير) في المربع أدناه:");
+    if (confirmation !== "تصفير") {
+      if (confirmation !== null) alert("تم إلغاء التصفير لأن الكلمة المدخلة غير متطابقة.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      const res = await fetch("/api/settings/reset-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل تصفير المبيعات");
+
+      alert(`✅ ${data.message}`);
+      fetchAllData();
+      window.location.reload();
+    } catch (e: any) {
+      alert("❌ خطأ أثناء تصفير المبيعات: " + e.message);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // ضبط المصنع الشامل
+  const handleFactoryReset = async () => {
+    const confirmation = prompt("🚨 تحذير حرج: هل ترغب بإعادة ضبط المصنع بالكامل؟\nاكتب (مسح شامل) للتأكيد:");
+    if (confirmation !== "مسح شامل") {
+      if (confirmation !== null) alert("تم إلغاء العملية.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      const res = await fetch("/api/settings/reset-system", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preserveSettings: true, preserveMenu: true, preserveUsers: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل إعادة الضبط");
+
+      alert(`✅ ${data.message}`);
+      fetchAllData();
+      window.location.reload();
+    } catch (e: any) {
+      alert("❌ خطأ: " + e.message);
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // تصدير وتحميل ملف النسخة الاحتياطية بصيغة .cashi
   const handleExportBackup = async () => {
@@ -3131,6 +3187,81 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 <div className="p-3 bg-stone-100 rounded-xl text-[11px] text-stone-500 flex items-center justify-between">
                   <span>💡 <strong>نصيحة:</strong> يُفضل دائماً تنزيل نسخة احتياطية أسبوعياً وحفظها على فلاش ميموري خارجي.</span>
                   <span className="font-mono font-bold text-stone-600">Cashi Safe Backup Engine</span>
+                </div>
+              </div>
+
+              {/* Reset Data & Start Fresh Section */}
+              <div className="bg-white border-2 border-red-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-red-100 pb-3 flex-row-reverse">
+                  <div>
+                    <h3 className="font-bold text-red-900 text-right flex items-center gap-2 justify-end">
+                      <span>تصفير الفواتير القديمة وبدء العمل الفعلي</span>
+                      <AlertTriangle className="w-5 h-5 text-red-600" />
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-1">
+                      يُستخدم عند الانتقال من فترة التجربة إلى تشغيل المحل الفعلي. يمسح الفواتير القديمة وحركات البيع مع الاحتفاظ بكافة بيانات المطعم والمنيو.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-red-100 text-red-800 text-[11px] font-bold rounded-full">
+                    منطقة العمليات الحساسة ⚠️
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Reset Sales Only */}
+                  <div className="p-5 border-2 border-red-100 hover:border-red-300 rounded-2xl bg-red-50/40 space-y-3 flex flex-col justify-between transition-all">
+                    <div>
+                      <div className="flex items-center gap-2 text-red-900 font-extrabold text-sm mb-1">
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                        <span>تصفير الفواتير والمبيعات فقط (موصى به للبدء الفعلي)</span>
+                      </div>
+                      <p className="text-[11px] text-stone-600 leading-relaxed">
+                        يمسح: <strong className="text-red-700">الفواتير، والورديات، والفواتير المعلقة، والمصروفات</strong>.
+                        <br />
+                        يبقى كما هو: <strong className="text-green-700">بيانات المطعم، الضريبة، الأصناف والتصنيفات، الطاولات، والمستخدمين</strong>.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={resetLoading}
+                      onClick={handleResetSalesOnly}
+                      className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    >
+                      <Trash2 className={`w-4 h-4 ${resetLoading ? "animate-spin" : ""}`} />
+                      <span>{resetLoading ? "جاري التصفير..." : "تصفير الفواتير القديمة والبدء من الصفر ⚡"}</span>
+                    </button>
+                  </div>
+
+                  {/* Factory Reset */}
+                  <div className="p-5 border-2 border-stone-200 hover:border-stone-400 rounded-2xl bg-stone-50 space-y-3 flex flex-col justify-between transition-all">
+                    <div>
+                      <div className="flex items-center gap-2 text-stone-800 font-extrabold text-sm mb-1">
+                        <RefreshCw className="w-4 h-4 text-stone-600" />
+                        <span>إعادة ضبط المصنع الشاملة</span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 leading-relaxed">
+                        مسح كافة البيانات وحركات المبيعات والعملاء لتهيئة النظام من الصفر لمطعم أو فرع جديد تماماً.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={resetLoading}
+                      onClick={handleFactoryReset}
+                      className="w-full py-3 bg-stone-700 hover:bg-stone-800 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${resetLoading ? "animate-spin" : ""}`} />
+                      <span>{resetLoading ? "جاري الإعادة..." : "إعادة ضبط المصنع 🔄"}</span>
+                    </button>
+                  </div>
+
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>يقوم كاشي تلقائياً بحفظ نسخة أمان احتياطية قبل التصفير في مجلد البرنامج لضمان أعلى معايير الأمان.</span>
                 </div>
               </div>
 

@@ -211,4 +211,128 @@ router.post("/api/backup/restore", authenticate(["admin", "manager"]), (req, res
   }
 });
 
+// تصفير الفواتير والمبيعات مع الإبقاء على إعدادات المطعم والأصناف والمستخدمين
+router.post("/api/settings/reset-sales", authenticate(["admin", "manager"]), (req, res) => {
+  try {
+    const db = readDB();
+
+    // أخذ نسخة أمان احتياطية قبل التصفير
+    try {
+      if (!fs.existsSync(path.dirname(DB_FILE))) {
+        fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+      }
+      fs.writeFileSync(`${DB_FILE}.pre_reset_backup_${Date.now()}.json`, JSON.stringify(db, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("تعذر أخذ نسخة أمان قبل التصفير:", e);
+    }
+
+    const previousOrdersCount = (db.orders || []).length;
+
+    // تصفير حركة المبيعات
+    db.orders = [];
+    db.held_orders = [];
+    db.shifts = [];
+    db.print_jobs = [];
+    db.expenses = [];
+    db.customer_ledger = [];
+    db.purchase_orders = [];
+    db.inventory_transactions = [];
+
+    // إعادة ضبط أرصدة ونقاط العملاء إن وجدوا
+    if (Array.isArray(db.customers)) {
+      db.customers = db.customers.map((c: any) => ({
+        ...c,
+        points: 0,
+        loyaltyPoints: 0,
+        creditBalance: 0,
+        totalSpent: 0,
+        visitsCount: 0
+      }));
+    }
+
+    // إعادة حالة الطاولات لمتاحة
+    if (Array.isArray(db.restaurant_tables)) {
+      db.restaurant_tables = db.restaurant_tables.map((t: any) => ({
+        ...t,
+        status: "free"
+      }));
+    }
+
+    writeDB(db);
+    writeAuditLog("تصفير الفواتير والمبيعات", (req as any).user?.id || "system", (req as any).user?.fullName || "مدير النظام", `تم تصفير عدد ${previousOrdersCount} فاتورة وبدء العمل الفعلي`);
+
+    res.json({
+      success: true,
+      message: `تم تصفير ${previousOrdersCount} فاتورة وحركة مبيعات بنجاح، وأصبح النظام جاهزاً للعمل الحقيقي مع بقاء الأصناف والإعدادات!`,
+      clearedOrdersCount: previousOrdersCount
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "فشل تصفير المبيعات: " + error.message });
+  }
+});
+
+// تصفير شامل للمطعم (ضبط المصنع) مع إمكانية الاحتفاظ بالمستخدمين
+router.post("/api/settings/reset-system", authenticate(["admin"]), (req, res) => {
+  try {
+    const db = readDB();
+
+    // أخذ نسخة أمان احتياطية
+    try {
+      if (!fs.existsSync(path.dirname(DB_FILE))) {
+        fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+      }
+      fs.writeFileSync(`${DB_FILE}.pre_factory_reset_${Date.now()}.json`, JSON.stringify(db, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("تعذر أخذ نسخة أمان قبل ضبط المصنع:", e);
+    }
+
+    const { preserveSettings, preserveMenu, preserveUsers } = req.body;
+
+    const newDB: any = {
+      settings: preserveSettings ? db.settings : null,
+      users: preserveUsers ? db.users : (db.users || []).filter((u: any) => u.role === "admin"),
+      categories: preserveMenu ? db.categories : [],
+      products: preserveMenu ? db.products : [],
+      restaurant_tables: db.restaurant_tables || [],
+      orders: [],
+      held_orders: [],
+      shifts: [],
+      customers: [
+        {
+          id: "cust-1",
+          name: "عميل نقدي افتراضي",
+          phone: "0500000000",
+          email: "",
+          points: 0,
+          loyaltyPoints: 0,
+          creditBalance: 0,
+          totalSpent: 0,
+          visitsCount: 0,
+          notes: "",
+          createdAt: new Date().toISOString()
+        }
+      ],
+      customer_ledger: [],
+      inventory_items: [],
+      inventory_transactions: [],
+      suppliers: [],
+      purchase_orders: [],
+      expenses: [],
+      recipes: [],
+      print_jobs: [],
+      audit_logs: []
+    };
+
+    writeDB(newDB);
+    writeAuditLog("ضبط المصنع للنظام", (req as any).user?.id || "system", (req as any).user?.fullName || "مدير النظام", "تم تنفيذ عملية تصفير كاملة للنظام");
+
+    res.json({
+      success: true,
+      message: "تم تنفيذ عملية التصفير وإعادة الضبط بنجاح!"
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "فشل تصفير النظام: " + error.message });
+  }
+});
+
 export default router;
