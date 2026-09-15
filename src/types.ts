@@ -156,3 +156,39 @@ export interface InventoryTransaction {
   createdBy: string;
   createdAt: string;
 }
+
+/** قناة بيع: المحل، هنقرستيشن، جاهز، تويو، إلخ */
+export interface SalesChannel {
+  id: string;
+  name: string;
+  defaultMarkupPercent: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** سعر صنف مخصص لقناة معينة */
+export interface ChannelItemPrice {
+  itemId: string;
+  channelId: string;
+  price: number;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** سجل تدقيق لأي تعديل سعر يدوي وقت البيع */
+export interface PriceAuditLogEntry {
+  id: string;
+  itemId: string;
+  itemName: string;
+  orderId?: string;
+  channelId: string | null;
+  originalPrice: number;
+  newPrice: number;
+  deltaPercent: number;
+  reason: string | null;
+  performedByUserId: string;
+  performedByUsername: string;
+  approvedByUserId: string;
+  timestamp: string;
+}

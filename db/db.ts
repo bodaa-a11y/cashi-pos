@@ -100,7 +100,18 @@ export function getSeedData() {
     expenses: [],
     recipes: [],
     print_jobs: [],
-    audit_logs: []
+    audit_logs: [],
+    salesChannels: [
+      { id: "in-store", name: "بيع من المحل (صالة)", defaultMarkupPercent: 0, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "takeaway", name: "سفري / محلي استلام", defaultMarkupPercent: 0, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "hungerstation", name: "هنقرستيشن 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "jahez", name: "جاهز 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "toyou", name: "تويو 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "ninja", name: "نينجا 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "keeta", name: "كيتا 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    ],
+    channelItemPrices: [],
+    priceAuditLog: []
   };
 }
 
@@ -116,7 +127,36 @@ export function readLocalDBOnly() {
     return seedData;
   }
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+    const data = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+    let changed = false;
+    if (!data.salesChannels || !Array.isArray(data.salesChannels)) {
+      data.salesChannels = [
+        { id: "in-store", name: "بيع من المحل (صالة)", defaultMarkupPercent: 0, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "takeaway", name: "سفري / محلي استلام", defaultMarkupPercent: 0, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "hungerstation", name: "هنقرستيشن 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "jahez", name: "جاهز 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "toyou", name: "تويو 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "ninja", name: "نينجا 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "keeta", name: "كيتا 🛵", defaultMarkupPercent: 15, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      ];
+      changed = true;
+    }
+    if (!data.channelItemPrices || !Array.isArray(data.channelItemPrices)) {
+      data.channelItemPrices = [];
+      changed = true;
+    }
+    if (!data.priceAuditLog || !Array.isArray(data.priceAuditLog)) {
+      data.priceAuditLog = [];
+      changed = true;
+    }
+    if (changed) {
+      try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
+      } catch (err) {
+        console.warn("تعذر تحديث الحقول الجديدة في ملف قاعدة البيانات:", err);
+      }
+    }
+    return data;
   } catch (e) {
     console.error("Error reading db.json, using fallback seed data:", e);
     return getSeedData();

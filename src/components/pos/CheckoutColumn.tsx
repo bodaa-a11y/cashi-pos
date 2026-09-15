@@ -1,6 +1,6 @@
-import React from "react";
-import { ShoppingBag, Clock, UserPlus, Search, Trash2, Plus, Minus, Tag } from "lucide-react";
-import { Product, RestaurantTable, Customer, Shift } from "../../types";
+import React, { useState } from "react";
+import { ShoppingBag, Clock, UserPlus, Search, Trash2, Plus, Minus, Tag, Edit3, ShieldAlert, Check } from "lucide-react";
+import { Product, RestaurantTable, Customer, Shift, SalesChannel } from "../../types";
 
 interface CheckoutColumnProps {
   isOnline: boolean;
@@ -15,7 +15,7 @@ interface CheckoutColumnProps {
   selectedCustomer: Customer | null;
   setSelectedCustomer: (cust: Customer | null) => void;
   setShowAddCustomerModal: (show: boolean) => void;
-  cart: { product: Product; quantity: number; notes?: string }[];
+  cart: { product: Product; quantity: number; notes?: string; isOverridden?: boolean; originalPrice?: number }[];
   setCart: React.Dispatch<React.SetStateAction<any[]>>;
   totals: {
     subtotal: number;
@@ -27,6 +27,9 @@ interface CheckoutColumnProps {
   appliedDiscount: { value: number; type: "fixed" | "percent"; reason: string };
   orderType: "dine_in" | "takeaway" | "delivery";
   setOrderType: (type: "dine_in" | "takeaway" | "delivery") => void;
+  channels?: SalesChannel[];
+  selectedChannelId?: string;
+  setSelectedChannelId?: (id: string) => void;
   selectedTable: string;
   setSelectedTable: (id: string) => void;
   selectedWaiter: string;
@@ -36,6 +39,7 @@ interface CheckoutColumnProps {
   handleOpenDiscountModal: () => void;
   handleHoldOrder: () => void;
   handleProceedToPayment: (shouldPrint?: boolean) => void;
+  onOpenPriceOverrideModal?: (itemIndex: number) => void;
 }
 
 export default function CheckoutColumn({
@@ -57,6 +61,9 @@ export default function CheckoutColumn({
   appliedDiscount,
   orderType,
   setOrderType,
+  channels = [],
+  selectedChannelId = "in-store",
+  setSelectedChannelId,
   selectedTable,
   setSelectedTable,
   selectedWaiter,
@@ -65,8 +72,11 @@ export default function CheckoutColumn({
   removeFromCart,
   handleOpenDiscountModal,
   handleHoldOrder,
-  handleProceedToPayment
+  handleProceedToPayment,
+  onOpenPriceOverrideModal
 }: CheckoutColumnProps) {
+  const currentChannel = channels.find(c => c.id === selectedChannelId);
+
   return (
     <aside className="w-full md:w-[32%] lg:w-[30%] h-full max-h-full bg-white border-l border-stone-200 flex flex-col overflow-hidden shrink-0">
       
@@ -84,13 +94,15 @@ export default function CheckoutColumn({
             <ShoppingBag className="w-5 h-5" />
             <span>فاتورة البيع الجارية</span>
           </h3>
-          {orderType === "takeaway" ? (
+          {currentChannel ? (
+            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-sm inline-block ${
+              selectedChannelId === "in-store" ? "bg-white/25 text-white" : "bg-amber-400 text-stone-900"
+            }`}>
+              {currentChannel.name}
+            </span>
+          ) : orderType === "takeaway" ? (
             <span className="text-[10px] bg-amber-400 text-stone-900 font-extrabold px-2 py-0.5 rounded-full shadow-sm inline-block">
               سعر تطبيقات التوصيل 🛵
-            </span>
-          ) : orderType === "delivery" ? (
-            <span className="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full inline-block">
-              توصيل سفري 🚗
             </span>
           ) : (
             <span className="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full inline-block">
@@ -107,6 +119,24 @@ export default function CheckoutColumn({
           <span>إقفال الوردية</span>
         </button>
       </div>
+
+      {/* Sales Channel Selector */}
+      {channels && channels.length > 0 && setSelectedChannelId && (
+        <div className="px-3 py-2 bg-stone-100/80 border-b border-stone-200 flex items-center gap-2 text-right">
+          <span className="text-[10px] font-bold text-stone-600 shrink-0">قناة البيع:</span>
+          <select
+            value={selectedChannelId}
+            onChange={(e) => setSelectedChannelId(e.target.value)}
+            className="flex-1 bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#2E7D32]"
+          >
+            {channels.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.name} {ch.defaultMarkupPercent > 0 ? `(+${ch.defaultMarkupPercent}%)` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Client Selector Row */}
       <div className="p-3 border-b border-stone-100 bg-stone-50 flex items-center gap-2 shrink-0 text-right">
@@ -199,10 +229,29 @@ export default function CheckoutColumn({
                 </div>
 
                 <div className="flex-1 pr-2">
-                  <h4 className="text-xs font-bold text-stone-800">{item.product.nameAr}</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-stone-800">{item.product.nameAr}</h4>
+                    {onOpenPriceOverrideModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPriceOverrideModal(index)}
+                        className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-amber-600 transition-all"
+                        title="تعديل السعر يدوياً (موافقة المدير)"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between mt-1 text-[10px]">
                     <span className="font-bold text-[#2E7D32] font-mono">{(item.product.price * item.quantity).toFixed(2)} ر.س</span>
-                    <span className="text-stone-400 font-mono">سعر الحبة: {item.product.price.toFixed(2)}</span>
+                    <div className="flex items-center gap-1.5">
+                      {item.isOverridden && (
+                        <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded border border-amber-300">
+                          سعر معدل
+                        </span>
+                      )}
+                      <span className="text-stone-400 font-mono">سعر الحبة: {item.product.price.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
               </div>

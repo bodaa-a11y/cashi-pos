@@ -371,11 +371,47 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
     if (!prod) {
       return res.status(400).json({ error: `الصنف المختار غير موجود في القائمة` });
     }
-    const isDeliveryApp = !!(order.isDeliveryApp || order.orderType === "takeaway" || (order.notes && ["هنقرستيشن", "كيتا", "نينجا", "ذا تشيفز", "جاهز", "تويو"].some((app: string) => order.notes.includes(app))));
-    const actualPrice = isDeliveryApp && prod.deliveryPrice && Number(prod.deliveryPrice) > 0
-      ? Number(prod.deliveryPrice)
-      : Number(prod.price);
-    item.unitPrice = actualPrice; // فرض السعر الحقيقي من السيرفر (سعر التطبيقات أو السعر العادي)
+
+    // فحص قناة البيع
+    const channelId = order.channelId || (order.orderType === "takeaway" ? "takeaway" : "in-store");
+    const channelPrices = db.channelItemPrices || [];
+    const customChannelPrice = channelPrices.find((cp: any) => cp.itemId === item.productId && cp.channelId === channelId);
+
+    const isDeliveryApp = !!(
+      order.isDeliveryApp ||
+      order.orderType === "takeaway" ||
+      ["hungerstation", "jahez", "toyou", "ninja", "keeta"].includes(channelId) ||
+      (order.notes && ["هنقرستيشن", "كيتا", "نينجا", "ذا تشيفز", "جاهز", "تويو"].some((app: string) => order.notes.includes(app)))
+    );
+
+    let resolvedStandardPrice = Number(prod.price);
+    if (customChannelPrice && Number(customChannelPrice.price) >= 0) {
+      resolvedStandardPrice = Number(customChannelPrice.price);
+    } else if (isDeliveryApp && prod.deliveryPrice && Number(prod.deliveryPrice) > 0) {
+      resolvedStandardPrice = Number(prod.deliveryPrice);
+    } else if (channelId !== "in-store") {
+      const channel = (db.salesChannels || []).find((c: any) => c.id === channelId);
+      if (channel && channel.defaultMarkupPercent) {
+        resolvedStandardPrice = Math.round(Number(prod.price) * (1 + Number(channel.defaultMarkupPercent) / 100) * 100) / 100;
+      }
+    }
+
+    // التحقق هل تم تعديل السعر يدوياً بموافقة معتمدة (Price Override)
+    let actualPrice = resolvedStandardPrice;
+    if (item.isOverridden && item.unitPrice !== undefined && Number(item.unitPrice) >= 0) {
+      // فحص هل يوجد سجل تدقيق لهذه العملية
+      const auditLog = db.priceAuditLog || [];
+      const hasAuditRecord = auditLog.some((al: any) =>
+        al.itemId === item.productId &&
+        Math.abs(al.newPrice - Number(item.unitPrice)) < 0.01 &&
+        (al.orderId === order.id || !al.orderId)
+      );
+      if (hasAuditRecord || item.approverUserId) {
+        actualPrice = Number(item.unitPrice);
+      }
+    }
+
+    item.unitPrice = actualPrice;
     item.lineTotal = actualPrice * item.quantity;
     if (!item.status) {
       item.status = "pending";

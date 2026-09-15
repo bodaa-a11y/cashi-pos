@@ -26,8 +26,9 @@ import {
   HelpCircle,
   ShoppingCart
 } from "lucide-react";
-import { Product, Category, RestaurantTable, Shift, Customer, HeldOrder } from "../types";
+import { Product, Category, RestaurantTable, Shift, Customer, HeldOrder, SalesChannel } from "../types";
 import CheckoutColumn from "./pos/CheckoutColumn";
+import { useChannels } from "../hooks/useChannels";
 
 interface SaleInvoiceProps {
   shift: Shift;
@@ -84,6 +85,17 @@ export default function SaleInvoice({
 
   // Cart State
   const [cart, setCart] = useState<{ product: Product; quantity: number; notes?: string }[]>([]);
+
+  const { channels, refreshChannels } = useChannels();
+  const [selectedChannelId, setSelectedChannelId] = useState<string>("in-store");
+
+  // Price Override Modal states
+  const [overrideItemIndex, setOverrideItemIndex] = useState<number | null>(null);
+  const [overrideNewPrice, setOverrideNewPrice] = useState<string>("");
+  const [overrideReason, setOverrideReason] = useState<string>("");
+  const [overridePin, setOverridePin] = useState<string>("");
+  const [overrideLoading, setOverrideLoading] = useState<boolean>(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   // Modals state
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
@@ -154,24 +166,40 @@ export default function SaleInvoice({
     setAppliedDiscount({ value: 0, type: "fixed", reason: "" });
   }, [shift]);
 
-  // حساب السعر الفعال للصنف (سعر تطبيقات التوصيل عند اختيار تطبيقات، أو السعر العادي)
-  const getProductEffectivePrice = (prod: Product, currentType: string = orderType) => {
-    if (currentType === "takeaway" && prod.deliveryPrice && Number(prod.deliveryPrice) > 0) {
+  // حساب السعر الفعال للصنف وفق القناة المختارة
+  const getProductEffectivePrice = (prod: Product, currentChannel: string = selectedChannelId, currentType: string = orderType) => {
+    // 1. إذا كان الصنف في القناة الافتراضية للبيع بالصالة
+    if (currentChannel === "in-store" && currentType !== "takeaway") {
+      return Number(prod.price);
+    }
+
+    // 2. إذا كان هناك سعر مخصص لتطبيقات التوصيل مسجل بالصنف
+    const isAppChannel = ["takeaway", "hungerstation", "jahez", "toyou", "ninja", "keeta"].includes(currentChannel) || currentType === "takeaway";
+    if (isAppChannel && prod.deliveryPrice && Number(prod.deliveryPrice) > 0) {
       return Number(prod.deliveryPrice);
     }
+
+    // 3. نسبة الزيادة الافتراضية للقناة إن وجدت
+    const channelObj = channels.find(c => c.id === currentChannel);
+    if (channelObj && channelObj.defaultMarkupPercent > 0) {
+      return Math.round(Number(prod.price) * (1 + channelObj.defaultMarkupPercent / 100) * 100) / 100;
+    }
+
     return Number(prod.price);
   };
 
   // Cart operations
   const handleAddToCart = (product: Product) => {
-    const effectivePrice = getProductEffectivePrice(product, orderType);
+    const effectivePrice = getProductEffectivePrice(product, selectedChannelId, orderType);
     setCart((prev) => {
       const index = prev.findIndex((item) => item.product.id === product.id);
       if (index !== -1) {
         const newCart = [...prev];
+        // إذا كان السعر معدلاً يدوياً مسبقاً نحتفظ به، وإلا نحدث للسعر الفعال للقناة
+        const currentPrice = newCart[index].isOverridden ? newCart[index].product.price : effectivePrice;
         newCart[index] = {
           ...newCart[index],
-          product: { ...newCart[index].product, price: effectivePrice },
+          product: { ...newCart[index].product, price: currentPrice },
           quantity: newCart[index].quantity + 1
         };
         return newCart;
@@ -180,12 +208,16 @@ export default function SaleInvoice({
     });
   };
 
-  // تحديث أسعار أصناف السلة فوراً عند التبديل بين الصالة وتطبيقات التوصيل
+  // تحديث أسعار أصناف السلة فوراً عند التبديل بين القنوات أو الصالة/التطبيقات
   useEffect(() => {
     setCart((prev) =>
       prev.map((item) => {
+        // إذا كان الصنف تم تعديل سعره يدوياً (Price Override) لا نلغيه تلقائياً
+        if (item.isOverridden) {
+          return item;
+        }
         const originalProd = products.find((p) => p.id === item.product.id) || item.product;
-        const newPrice = getProductEffectivePrice(originalProd, orderType);
+        const newPrice = getProductEffectivePrice(originalProd, selectedChannelId, orderType);
         return {
           ...item,
           product: {
@@ -195,7 +227,7 @@ export default function SaleInvoice({
         };
       })
     );
-  }, [orderType, products]);
+  }, [selectedChannelId, orderType, products, channels]);
 
   const handleUpdateQuantity = (index: number, change: number) => {
     setCart((prev) => {
@@ -559,6 +591,9 @@ export default function SaleInvoice({
         appliedDiscount={appliedDiscount}
         orderType={orderType}
         setOrderType={setOrderType}
+        channels={channels}
+        selectedChannelId={selectedChannelId}
+        setSelectedChannelId={setSelectedChannelId}
         selectedTable={selectedTable}
         setSelectedTable={setSelectedTable}
         selectedWaiter={selectedWaiter}
@@ -568,6 +603,15 @@ export default function SaleInvoice({
         handleOpenDiscountModal={() => setShowDiscountModal(true)}
         handleHoldOrder={handleHoldOrder}
         handleProceedToPayment={handleProceedToPayment}
+        onOpenPriceOverrideModal={(itemIdx) => {
+          const item = cart[itemIdx];
+          if (!item) return;
+          setOverrideItemIndex(itemIdx);
+          setOverrideNewPrice(item.product.price.toString());
+          setOverrideReason("");
+          setOverridePin("");
+          setOverrideError(null);
+        }}
       />
 
       {/* RIGHT COLUMN: Menu and Controls (70% width) */}
@@ -1200,6 +1244,149 @@ export default function SaleInvoice({
                   className="px-6 py-2 text-xs font-bold text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-all"
                 >
                   إلغاء التراجع
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: استثناء وتعديل السعر وقت الدفع مع موافقة المدير وتوثيق التدقيق */}
+      {overrideItemIndex !== null && cart[overrideItemIndex] && (
+        <div className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden text-right animate-in zoom-in-95 duration-150">
+            <div className="bg-amber-600 text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">تعديل سعر استثنائي</span>
+              <h3 className="text-base font-extrabold flex items-center gap-1.5">
+                <Tag className="w-5 h-5" />
+                <span>تعديل سعر: {cart[overrideItemIndex].product.nameAr}</span>
+              </h3>
+              <button
+                onClick={() => setOverrideItemIndex(null)}
+                className="p-1 hover:bg-white/20 rounded-lg text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 leading-relaxed">
+                <p className="font-bold">⚠️ تنبيه رقابي مالي:</p>
+                <p>أي تعديل للسعر وقت الدفع يُسجّل فوراً في سجل التدقيق المالي مع اسم الموظف والسبب.</p>
+                <p className="mt-1 font-mono text-stone-600">السعر الأصلي للصنف: <strong>{cart[overrideItemIndex].product.price.toFixed(2)} ر.س</strong></p>
+              </div>
+
+              {overrideError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold">
+                  {overrideError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">السعر الجديد للحبة (ر.س) *</label>
+                <input
+                  type="number"
+                  step="0.25"
+                  autoFocus
+                  value={overrideNewPrice}
+                  onChange={(e) => setOverrideNewPrice(e.target.value)}
+                  placeholder="مثال: 12.00"
+                  className="w-full border-2 border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-left font-mono font-bold focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">سبب التعديل الاستثنائي *</label>
+                <input
+                  type="text"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="مثال: خصم خاص لعميل VIP، اتفاق إدارة..."
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-right focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              {/* حقل PIN للمدير/المشرف */}
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">رمز PIN السري للمدير للموافقة *</label>
+                <input
+                  type="password"
+                  maxLength={6}
+                  value={overridePin}
+                  onChange={(e) => setOverridePin(e.target.value)}
+                  placeholder="أدخل رمز المشرف (مثال: 0000 أو 2222)"
+                  className="w-full border border-stone-200 rounded-xl bg-stone-50 p-2.5 text-xs text-center font-mono font-bold tracking-widest focus:outline-none focus:border-amber-600"
+                />
+                <p className="text-[10px] text-stone-400 mt-1">إذا كان المستخدم الحالي مديراً أو مشرفاً، يمكن استخدام رمزه أو رمز الأدمن.</p>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2 border-t border-stone-100">
+                <button
+                  type="button"
+                  disabled={overrideLoading}
+                  onClick={() => setOverrideItemIndex(null)}
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 text-xs font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  disabled={overrideLoading || !overrideNewPrice}
+                  onClick={async () => {
+                    const newPriceNum = Number(overrideNewPrice);
+                    if (isNaN(newPriceNum) || newPriceNum < 0) {
+                      setOverrideError("يرجى إدخال سعر صحيح");
+                      return;
+                    }
+
+                    try {
+                      setOverrideLoading(true);
+                      setOverrideError(null);
+
+                      const res = await fetch("/api/orders/override-price", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          itemId: cart[overrideItemIndex].product.id,
+                          originalPrice: cart[overrideItemIndex].product.price,
+                          newPrice: newPriceNum,
+                          reason: overrideReason || "تعديل وقت البيع",
+                          approverPin: overridePin
+                        })
+                      });
+
+                      const data = await res.json();
+                      if (!res.ok) {
+                        throw new Error(data.error || "فشل تعديل السعر");
+                      }
+
+                      // تطبيق السعر الجديد على بند السلة
+                      setCart((prev) => {
+                        const updated = [...prev];
+                        const target = updated[overrideItemIndex];
+                        updated[overrideItemIndex] = {
+                          ...target,
+                          isOverridden: true,
+                          originalPrice: target.product.price,
+                          product: {
+                            ...target.product,
+                            price: newPriceNum
+                          }
+                        };
+                        return updated;
+                      });
+
+                      alert("✅ تم اعتماد وتوثيق السعر الجديد بنجاح!");
+                      setOverrideItemIndex(null);
+                    } catch (err: any) {
+                      setOverrideError(err.message || "حدث خطأ أثناء اعتماد السعر");
+                    } finally {
+                      setOverrideLoading(false);
+                    }
+                  }}
+                  className="px-6 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5"
+                >
+                  <span>{overrideLoading ? "جاري الاعتماد..." : "اعتماد وتطبيق السعر ⚡"}</span>
                 </button>
               </div>
             </div>

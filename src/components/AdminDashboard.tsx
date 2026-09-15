@@ -231,6 +231,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [searchQuery, setSearchQuery] = useState("");
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [priceAuditLogs, setPriceAuditLogs] = useState<any[]>([]);
 
   // Backup & Restore states
   const [backupLoading, setBackupLoading] = useState(false);
@@ -410,14 +411,15 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [resMenu, resTables, resShifts, resUsers, resInventory, resAuditLogs, resRecipes] = await Promise.all([
+      const [resMenu, resTables, resShifts, resUsers, resInventory, resAuditLogs, resRecipes, resPriceAudit] = await Promise.all([
         fetch("/api/menu"),
         fetch("/api/tables"),
         fetch("/api/shifts"),
         fetch("/api/users"),
         fetch("/api/inventory"),
         fetch("/api/audit-logs"),
-        fetch("/api/recipes")
+        fetch("/api/recipes"),
+        fetch("/api/price-audit-log")
       ]);
 
       if (resMenu.ok) {
@@ -448,6 +450,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       if (resRecipes.ok) {
         const recs = await resRecipes.json();
         setRecipes(recs);
+      }
+      if (resPriceAudit.ok) {
+        const pLogs = await resPriceAudit.json();
+        setPriceAuditLogs(pLogs);
       }
 
     } catch (e) {
@@ -3339,6 +3345,71 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                             <td className="p-4 text-stone-600 font-medium leading-relaxed">{log.details}</td>
                             <td className="p-4 text-center font-mono text-stone-500">
                               {new Date(log.createdAt).toLocaleString("ar-SA")}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* سجل تدقيق تعديلات الأسعار وقت البيع */}
+              <div className="bg-white border-2 border-amber-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-amber-100 pb-3 flex-row-reverse">
+                  <div>
+                    <h3 className="font-bold text-amber-900 text-right flex items-center gap-2 justify-end">
+                      <span>سجل تعديلات الأسعار وقت البيع (Price Overrides)</span>
+                      <Tag className="w-4 h-4 text-amber-600" />
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-1">
+                      يوثق أي تعديل يدوي استثنائي على أسعار الأصناف أثناء إتمام الفاتورة مع هوية الموظف والمدير المعتمد ونسبة التغيير والسبب.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[11px] font-bold rounded-full">
+                    مراقبة مالية ⚖️
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-amber-50/50 border-b border-amber-100 text-amber-900 font-bold">
+                      <tr>
+                        <th className="p-3">اسم الصنف</th>
+                        <th className="p-3 text-center">السعر الأصلي</th>
+                        <th className="p-3 text-center">السعر المعدل</th>
+                        <th className="p-3 text-center">نسبة التغيير</th>
+                        <th className="p-3">سبب التعديل</th>
+                        <th className="p-3">الكاشير</th>
+                        <th className="p-3">المعتمد</th>
+                        <th className="p-3 text-center">الوقت والتاريخ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 font-medium">
+                      {priceAuditLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-stone-400 font-bold">
+                            لا توجد تعديلات أسعار استثنائية مسجلة حتى الآن.
+                          </td>
+                        </tr>
+                      ) : (
+                        priceAuditLogs.map((pLog) => (
+                          <tr key={pLog.id} className="hover:bg-amber-50/30">
+                            <td className="p-3 font-bold text-stone-800">{pLog.itemName}</td>
+                            <td className="p-3 text-center font-mono text-stone-500">{pLog.originalPrice?.toFixed(2)} ر.س</td>
+                            <td className="p-3 text-center font-mono font-bold text-amber-900">{pLog.newPrice?.toFixed(2)} ر.س</td>
+                            <td className="p-3 text-center font-mono font-bold">
+                              <span className={`px-2 py-0.5 rounded text-[10px] ${
+                                pLog.deltaPercent < 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+                              }`}>
+                                {pLog.deltaPercent > 0 ? `+${pLog.deltaPercent}%` : `${pLog.deltaPercent}%`}
+                              </span>
+                            </td>
+                            <td className="p-3 text-stone-600 max-w-xs">{pLog.reason || "تعديل يدوي"}</td>
+                            <td className="p-3 font-bold text-stone-700">{pLog.performedByUsername}</td>
+                            <td className="p-3 text-stone-500 font-mono">{pLog.approvedByUserId}</td>
+                            <td className="p-3 text-center font-mono text-stone-500">
+                              {new Date(pLog.timestamp).toLocaleString("ar-SA")}
                             </td>
                           </tr>
                         ))

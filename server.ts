@@ -30,6 +30,8 @@ import suppliersRouter from "./routes/suppliers";
 import customersRouter from "./routes/customers";
 import expensesRouter from "./routes/expenses";
 import reportsRouter from "./routes/reports";
+import channelsRouter from "./routes/channels";
+import priceOverrideRouter from "./routes/priceOverride";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -152,6 +154,8 @@ export function createServer(dbPath?: string) {
   app.use(customersRouter);
   app.use(expensesRouter);
   app.use(reportsRouter);
+  app.use(channelsRouter);
+  app.use(priceOverrideRouter);
 
   // توجيه باقي المسارات لواجهة React (SPA Routing)
   app.get("*", (req, res, next) => {
