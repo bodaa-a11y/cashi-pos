@@ -197,6 +197,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     nameEn: "",
     categoryId: "",
     price: "",
+    deliveryPrice: "",
     cost: "",
     trackInventory: false,
     quantity: "",
@@ -236,12 +237,18 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<string | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
+  const [showResetSalesModal, setShowResetSalesModal] = useState(false);
+  const [resetConfirmationText, setResetConfirmationText] = useState("");
 
-  // تصفير الفواتير القديمة وتفريغ المبيعات للبدء الحقيقي (مع بقاء المنيو والأصناف والإعدادات)
-  const handleResetSalesOnly = async () => {
-    const confirmation = prompt("⚠️ تحذير شديد الأهمية:\nسيتم حذف وتصفير جميع الفواتير والمبيعات السابقة والورديات بالكامل للبدء الفعلي للنظام.\nستبقى إعدادات المنشأة وقائمة الأصناف والتصنيفات كما هي دون تغيير.\n\nلتأكيد العملية، يرجى كتابة كلمة (تصفير) في المربع أدناه:");
-    if (confirmation !== "تصفير") {
-      if (confirmation !== null) alert("تم إلغاء التصفير لأن الكلمة المدخلة غير متطابقة.");
+  // فتح نافذة تأكيد تصفير الفواتير القديمة (متوافقة 100% مع بيئة Electron)
+  const handleResetSalesOnly = () => {
+    setResetConfirmationText("");
+    setShowResetSalesModal(true);
+  };
+
+  const confirmResetSales = async () => {
+    if (resetConfirmationText.trim() !== "تصفير") {
+      alert("يرجى كتابة كلمة (تصفير) بدقة للتأكيد");
       return;
     }
 
@@ -254,6 +261,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل تصفير المبيعات");
 
+      setShowResetSalesModal(false);
       alert(`✅ ${data.message}`);
       fetchAllData();
       window.location.reload();
@@ -923,6 +931,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
     const payload = {
       ...productForm,
       price: Number(productForm.price),
+      deliveryPrice: productForm.deliveryPrice !== "" && Number(productForm.deliveryPrice) > 0 ? Number(productForm.deliveryPrice) : null,
       cost: Number(productForm.cost),
       quantity: Number(productForm.quantity) || 0
     };
@@ -951,6 +960,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           nameEn: "",
           categoryId: "",
           price: "",
+          deliveryPrice: "",
           cost: "",
           trackInventory: false,
           quantity: "",
@@ -1857,6 +1867,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                           nameEn: "",
                           categoryId: selectedMenuCategory !== "all" ? selectedMenuCategory : (categories[0]?.id || ""),
                           price: "",
+                          deliveryPrice: "",
                           cost: "",
                           trackInventory: false,
                           quantity: "",
@@ -2005,6 +2016,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                           <th className="p-4">الاسم بالإنجليزية</th>
                           <th className="p-4">القسم التابع له</th>
                           <th className="p-4 text-left">سعر البيع</th>
+                          <th className="p-4 text-left text-amber-700">سعر التطبيقات</th>
                           <th className="p-4 text-left">التكلفة</th>
                           <th className="p-4 text-center">المستودع</th>
                           <th className="p-4 text-center">الكمية</th>
@@ -2047,6 +2059,9 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                                   </span>
                                 </td>
                                 <td className="p-4 text-left font-bold font-mono text-[#2E7D32]">{prod.price.toFixed(2)} ر.س</td>
+                                <td className="p-4 text-left font-bold font-mono text-amber-700">
+                                  {prod.deliveryPrice ? `${Number(prod.deliveryPrice).toFixed(2)} ر.س` : <span className="text-stone-300 font-normal">نفس البيع</span>}
+                                </td>
                                 <td className="p-4 text-left font-mono text-stone-500">{prod.cost.toFixed(2)} ر.س</td>
                                 <td className="p-4 text-center font-bold">
                                   {prod.trackInventory ? (
@@ -2067,6 +2082,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                                         nameEn: prod.nameEn || "",
                                         categoryId: prod.categoryId,
                                         price: String(prod.price),
+                                        deliveryPrice: prod.deliveryPrice ? String(prod.deliveryPrice) : "",
                                         cost: String(prod.cost),
                                         trackInventory: prod.trackInventory,
                                         quantity: String(prod.quantity || 0),
@@ -3426,6 +3442,25 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 </div>
               </div>
 
+              {/* سعر خاص بتطبيقات التوصيل (جاهز، هنقرستيشن، تويو، نينجا...) */}
+              <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3">
+                <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center justify-between">
+                  <span>سعر تطبيقات التوصيل (ر.س) 🛵</span>
+                  <span className="text-[10px] text-amber-600 font-normal">هنقرستيشن، جاهز، تويو، نينجا...</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={productForm.deliveryPrice || ""}
+                  onChange={(e) => setProductForm(p => ({ ...p, deliveryPrice: e.target.value }))}
+                  placeholder="سعر التطبيقات (اختياري، اتركه فارغاً إذا كان مطابقاً لسعر الصالة)"
+                  className="w-full border border-amber-300 rounded-xl bg-white p-2.5 text-xs text-left font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-sm"
+                />
+                <p className="text-[10px] text-amber-700 mt-1 font-medium">
+                  * عند اختيار الكاشير لـ "تطبيقات" في شاشة البيع، سيتم تطبيق هذا السعر تلقائياً لهذا الصنف.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">صورة الصنف للمنيو</label>
                 <div className="flex items-center gap-3 mt-1.5 justify-end">
@@ -3858,6 +3893,63 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تأكيد تصفير الفواتير القديمة (يعمل بكفاءة داخل الويندوز و Electron) */}
+      {showResetSalesModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border-2 border-red-500 overflow-hidden text-right animate-in fade-in zoom-in duration-200">
+            <div className="bg-red-600 text-white p-5 flex items-center justify-between">
+              <span className="text-xs bg-black/20 px-3 py-1 rounded-full font-bold">إجراء حرج وحساس</span>
+              <h3 className="text-lg font-black flex items-center gap-2">
+                <span>تأكيد تصفير المبيعات</span>
+                <AlertTriangle className="w-5 h-5 text-amber-300" />
+              </h3>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs text-red-900 leading-relaxed space-y-2">
+                <p className="font-bold text-sm">⚠️ تنبيه شديد الأهمية:</p>
+                <p>• سيتم حذف وتصفير جميع الفواتير والمبيعات السابقة والورديات بالكامل للبدء الفعلي للنظام.</p>
+                <p>• <strong className="text-green-700">ستبقى إعدادات المنشأة وقائمة الأصناف والتصنيفات والمستخدمين كما هي دون أي حذف</strong>.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-2">
+                  لتأكيد العملية، يرجى كتابة كلمة <span className="text-red-600 font-extrabold text-sm px-1.5 py-0.5 bg-red-100 rounded">تصفير</span> في المربع أدناه:
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={resetConfirmationText}
+                  onChange={(e) => setResetConfirmationText(e.target.value)}
+                  placeholder="اكتب: تصفير"
+                  className="w-full border-2 border-red-300 focus:border-red-600 rounded-xl bg-white p-3 text-center text-sm font-bold text-stone-900 focus:outline-none shadow-sm"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={resetLoading}
+                  onClick={() => setShowResetSalesModal(false)}
+                  className="flex-1 py-3 border border-stone-300 hover:bg-stone-100 rounded-xl text-stone-700 text-xs font-bold"
+                >
+                  إلغاء التراجع
+                </button>
+                <button
+                  type="button"
+                  disabled={resetLoading || resetConfirmationText.trim() !== "تصفير"}
+                  onClick={confirmResetSales}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow flex items-center justify-center gap-2"
+                >
+                  <Trash2 className={`w-4 h-4 ${resetLoading ? "animate-spin" : ""}`} />
+                  <span>{resetLoading ? "جاري التصفير..." : "تأكيد التصفير والبدء من الصفر"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

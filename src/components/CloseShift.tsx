@@ -66,15 +66,15 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
   const buildFullDailyReportHtml = async () => {
     const bCurrency = settings?.currency || "ر.س";
     const bName = settings?.businessNameAr || "مطاعم دبل للوجبات السريعة";
-    const today = new Date().toISOString().split("T")[0];
+    const shiftDate = shift.openedAt ? shift.openedAt.split("T")[0] : new Date().toISOString().split("T")[0];
 
-    // جلب بيانات تقرير نهاية اليوم الشامل بكل الأقسام والأصناف
+    // جلب بيانات تقرير نهاية الوردية الشامل بكل الأقسام والأصناف من لحظة فتحها حتى إغلاقها
     let eodData: any = null;
     try {
       const token = localStorage.getItem("pos_token");
       const headers: any = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch(`/api/reports/end-of-day?date=${today}`, { headers });
+      const res = await fetch(`/api/reports/end-of-day?shiftId=${shift.id}&date=${shiftDate}`, { headers });
       if (res.ok) eodData = await res.json();
     } catch (e) {
       console.error("Could not fetch eod data:", e);

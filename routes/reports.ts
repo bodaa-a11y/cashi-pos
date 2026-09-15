@@ -7,6 +7,39 @@ const router = express.Router();
 // تقريب لمنزلتين عشريتين
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+export function getOrderBusinessDate(o: any, db: any): string {
+  if (o.shiftId && Array.isArray(db?.shifts)) {
+    const shift = db.shifts.find((s: any) => s.id === o.shiftId);
+    if (shift && shift.openedAt) {
+      try {
+        const d = new Date(shift.openedAt);
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const day = String(d.getDate()).padStart(2, "0");
+          return `${year}-${month}-${day}`;
+        }
+      } catch (e) {
+        return shift.openedAt.split("T")[0];
+      }
+    }
+  }
+  if (o.createdAt) {
+    try {
+      const d = new Date(o.createdAt);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {
+      return o.createdAt.split("T")[0];
+    }
+  }
+  return "";
+}
+
 function dayRange(dateStr: string) {
   const from = new Date(dateStr + "T00:00:00");
   const to = new Date(dateStr + "T23:59:59.999");
@@ -16,27 +49,49 @@ function dayRange(dateStr: string) {
 function ordersOfDay(db: any, dateStr: string) {
   const { from, to } = dayRange(dateStr);
   return (db.orders || []).filter((o: any) => {
+    const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+    if (!isCompleted) return false;
+
+    // احتساب الطلب بناءً على اليوم التشغيلي للوردية (لتشمل طلبات ما بعد منتصف الليل حتى الفجر)
+    const bDate = getOrderBusinessDate(o, db);
+    if (bDate === dateStr) return true;
+
+    // كحل احتياطي للتوافق
     const d = new Date(o.createdAt);
-    return (
-      d >= from && d <= to &&
-      (o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded")
-    );
+    return !isNaN(d.getTime()) && d >= from && d <= to;
   });
 }
 
 // ═══════════════════════════════════════════════════════
 // تقرير نهاية اليوم الشامل — كل الأصناف وكل قسم لوحده
-// GET /api/reports/end-of-day?date=YYYY-MM-DD
-// ═══════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════
-// تقرير نهاية اليوم الشامل — كل الأصناف وكل قسم لوحده
-// GET /api/reports/end-of-day?date=YYYY-MM-DD
+// GET /api/reports/end-of-day?date=YYYY-MM-DD[&shiftId=...]
 // ═══════════════════════════════════════════════════════
 router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier"]), (req, res) => {
   try {
-    const date = String(req.query.date || new Date().toISOString().split("T")[0]);
     const db = readDB();
-    const orders = ordersOfDay(db, date);
+    const shiftId = req.query.shiftId ? String(req.query.shiftId) : null;
+    const targetShift = shiftId ? (db.shifts || []).find((s: any) => s.id === shiftId) : null;
+
+    let date = String(req.query.date || new Date().toISOString().split("T")[0]);
+    let orders: any[] = [];
+
+    if (targetShift) {
+      // عند طلب تقرير وردية معينة: جلب كافة فواتير الوردية بالكامل من بدايتها حتى نهايتها عبر منتصف الليل
+      if (targetShift.openedAt) {
+        date = getOrderBusinessDate({ createdAt: targetShift.openedAt }, db);
+      }
+      orders = (db.orders || []).filter((o: any) => {
+        const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+        if (!isCompleted) return false;
+        if (o.shiftId === targetShift.id) return true;
+        const ot = new Date(o.createdAt).getTime();
+        const start = new Date(targetShift.openedAt).getTime();
+        const end = targetShift.closedAt ? new Date(targetShift.closedAt).getTime() : Date.now();
+        return ot >= start && ot <= end && (!o.shiftId || o.shiftId === targetShift.id);
+      });
+    } else {
+      orders = ordersOfDay(db, date);
+    }
 
     let totalSales = 0, totalTax = 0, totalDiscount = 0, totalRefunded = 0;
     let cashSales = 0, cardSales = 0, otherSales = 0, totalCost = 0;
@@ -135,6 +190,7 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
     const { from, to } = dayRange(date);
     const shifts = (db.shifts || [])
       .filter((s: any) => {
+        if (targetShift && s.id === targetShift.id) return true;
         const d = new Date(s.openedAt);
         return !isNaN(d.getTime()) && d >= from && d <= to;
       })
@@ -194,7 +250,19 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
 router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) => {
   const db = readDB();
   const today = new Date().toISOString().split("T")[0];
-  const orders = ordersOfDay(db, today);
+  const activeShift = (db.shifts || []).find((s: any) => s.status === "open") || null;
+
+  // في حال وجود وردية مفتوحة تمتد عبر منتصف الليل، يتم احتساب كافة فواتيرها كاملة في المراقبة اللحظية
+  let orders: any[] = [];
+  if (activeShift) {
+    orders = (db.orders || []).filter((o: any) => {
+      const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+      if (!isCompleted) return false;
+      return o.shiftId === activeShift.id || getOrderBusinessDate(o, db) === today;
+    });
+  } else {
+    orders = ordersOfDay(db, today);
+  }
 
   let todaySales = 0, todayCash = 0, todayCard = 0;
   const cashierMap: any = {};
@@ -215,7 +283,6 @@ router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) 
     }
   }
 
-  const activeShift = (db.shifts || []).find((s: any) => s.status === "open") || null;
   const { from, to } = dayRange(today);
 
   // آخر عمليات دخول اليوم (من سجل التدقيق)

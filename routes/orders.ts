@@ -34,15 +34,50 @@ router.get("/api/orders/stream", (req, res) => {
   });
 });
 
+function getOrderBusinessDate(o: any, db?: any): string {
+  if (db && o.shiftId && Array.isArray(db.shifts)) {
+    const shift = db.shifts.find((s: any) => s.id === o.shiftId);
+    if (shift && shift.openedAt) {
+      try {
+        const d = new Date(shift.openedAt);
+        if (!isNaN(d.getTime())) {
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        }
+      } catch (e) {
+        return shift.openedAt.split("T")[0];
+      }
+    }
+  }
+  if (o.createdAt) {
+    try {
+      const d = new Date(o.createdAt);
+      if (!isNaN(d.getTime())) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+    } catch (e) {
+      return o.createdAt.split("T")[0];
+    }
+  }
+  return "";
+}
+
 // دالة مساعدة لتصفية الطلبات بنطاق تاريخ
-function filterOrdersByDateRange(orders: any[], from: string, to: string) {
+function filterOrdersByDateRange(orders: any[], from: string, to: string, db?: any) {
   const fromDate = new Date(from);
   fromDate.setHours(0, 0, 0, 0);
   const toDate = new Date(to);
   toDate.setHours(23, 59, 59, 999);
-  return orders.filter((o: any) => {
+  return (orders || []).filter((o: any) => {
+    const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+    if (!isCompleted) return false;
+
+    // فحص اليوم التشغيلي أولاً (لتضمين طلبات ما بعد منتصف الليل مع وردية اليوم نفسه)
+    const bDate = getOrderBusinessDate(o, db);
+    if (bDate && bDate >= from && bDate <= to) return true;
+
+    // كحل احتياطي للتوافق
     const d = new Date(o.createdAt);
-    return d >= fromDate && d <= toDate && (o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded");
+    return !isNaN(d.getTime()) && d >= fromDate && d <= toDate;
   });
 }
 
@@ -336,8 +371,11 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
     if (!prod) {
       return res.status(400).json({ error: `الصنف المختار غير موجود في القائمة` });
     }
-    const actualPrice = Number(prod.price);
-    item.unitPrice = actualPrice; // فرض السعر الحقيقي من السيرفر
+    const isDeliveryApp = !!(order.isDeliveryApp || order.orderType === "takeaway" || (order.notes && ["هنقرستيشن", "كيتا", "نينجا", "ذا تشيفز", "جاهز", "تويو"].some((app: string) => order.notes.includes(app))));
+    const actualPrice = isDeliveryApp && prod.deliveryPrice && Number(prod.deliveryPrice) > 0
+      ? Number(prod.deliveryPrice)
+      : Number(prod.price);
+    item.unitPrice = actualPrice; // فرض السعر الحقيقي من السيرفر (سعر التطبيقات أو السعر العادي)
     item.lineTotal = actualPrice * item.quantity;
     if (!item.status) {
       item.status = "pending";
@@ -588,7 +626,7 @@ router.get("/api/audit-logs", authenticate(["admin", "manager"]), (req, res) => 
 router.get("/api/reports/date-range", authenticate(["admin", "manager"]), (req, res) => {
   const { from, to } = req.query;
   const db = readDB();
-  const filtered = filterOrdersByDateRange(db.orders, from as string, to as string);
+  const filtered = filterOrdersByDateRange(db.orders, from as string, to as string, db);
   res.json(calculateOrdersSummary(db, filtered));
 });
 
@@ -597,24 +635,32 @@ router.get("/api/reports/monthly", authenticate(["admin", "manager"]), (req, res
   const db = readDB();
   const from = `${year}-${month}-01`;
   const to = `${year}-${month}-31`; // Simplified date range end
-  const filtered = filterOrdersByDateRange(db.orders, from, to);
+  const filtered = filterOrdersByDateRange(db.orders, from, to, db);
   res.json(calculateOrdersSummary(db, filtered));
 });
 
 router.get("/api/reports/daily", authenticate(["admin", "manager"]), (req, res) => {
   const { date } = req.query;
   const db = readDB();
-  const filtered = filterOrdersByDateRange(db.orders, date as string, date as string);
+  const filtered = filterOrdersByDateRange(db.orders, date as string, date as string, db);
   res.json(calculateOrdersSummary(db, filtered));
 });
 
 router.get("/api/manager/summary", authenticate(["admin", "manager"]), (req, res) => {
   const db = readDB();
   const today = new Date().toISOString().split("T")[0];
-  const todayOrders = filterOrdersByDateRange(db.orders, today, today);
+  const activeShift = (db.shifts || []).find((s: any) => s.status === "open");
+  let todayOrders: any[] = [];
+  if (activeShift) {
+    todayOrders = (db.orders || []).filter((o: any) => {
+      const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+      return isCompleted && (o.shiftId === activeShift.id || filterOrdersByDateRange([o], today, today, db).length > 0);
+    });
+  } else {
+    todayOrders = filterOrdersByDateRange(db.orders || [], today, today, db);
+  }
   const summary = calculateOrdersSummary(db, todayOrders);
-  const activeShift = db.shifts.find((s: any) => s.status === "open");
-  const lowStock = db.inventory_items.filter((item: any) => item.quantity <= item.lowStockThreshold);
+  const lowStock = (db.inventory_items || []).filter((item: any) => item.quantity <= item.lowStockThreshold);
 
   res.json({
     ...summary,
@@ -638,7 +684,7 @@ router.get("/api/reports/sales-summary", authenticate(["admin", "manager"]), (re
   }
 
   const db = readDB();
-  const completedOrders = filterOrdersByDateRange(db.orders, from as string, to as string);
+  const completedOrders = filterOrdersByDateRange(db.orders, from as string, to as string, db);
   const summary = calculateOrdersSummary(db, completedOrders);
   res.json(summary);
 });

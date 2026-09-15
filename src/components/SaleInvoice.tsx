@@ -154,18 +154,48 @@ export default function SaleInvoice({
     setAppliedDiscount({ value: 0, type: "fixed", reason: "" });
   }, [shift]);
 
+  // حساب السعر الفعال للصنف (سعر تطبيقات التوصيل عند اختيار تطبيقات، أو السعر العادي)
+  const getProductEffectivePrice = (prod: Product, currentType: string = orderType) => {
+    if (currentType === "takeaway" && prod.deliveryPrice && Number(prod.deliveryPrice) > 0) {
+      return Number(prod.deliveryPrice);
+    }
+    return Number(prod.price);
+  };
+
   // Cart operations
   const handleAddToCart = (product: Product) => {
+    const effectivePrice = getProductEffectivePrice(product, orderType);
     setCart((prev) => {
       const index = prev.findIndex((item) => item.product.id === product.id);
       if (index !== -1) {
         const newCart = [...prev];
-        newCart[index] = { ...newCart[index], quantity: newCart[index].quantity + 1 };
+        newCart[index] = {
+          ...newCart[index],
+          product: { ...newCart[index].product, price: effectivePrice },
+          quantity: newCart[index].quantity + 1
+        };
         return newCart;
       }
-      return [...prev, { product, quantity: 1, notes: "" }];
+      return [...prev, { product: { ...product, price: effectivePrice }, quantity: 1, notes: "" }];
     });
   };
+
+  // تحديث أسعار أصناف السلة فوراً عند التبديل بين الصالة وتطبيقات التوصيل
+  useEffect(() => {
+    setCart((prev) =>
+      prev.map((item) => {
+        const originalProd = products.find((p) => p.id === item.product.id) || item.product;
+        const newPrice = getProductEffectivePrice(originalProd, orderType);
+        return {
+          ...item,
+          product: {
+            ...item.product,
+            price: newPrice
+          }
+        };
+      })
+    );
+  }, [orderType, products]);
 
   const handleUpdateQuantity = (index: number, change: number) => {
     setCart((prev) => {
@@ -468,6 +498,7 @@ export default function SaleInvoice({
     }>();
 
     filteredProducts.forEach((prod) => {
+      const effPrice = getProductEffectivePrice(prod, orderType);
       const match = prod.nameAr.match(sizeRegex);
       const baseName = match ? prod.nameAr.replace(sizeRegex, "").trim() : prod.nameAr.trim();
       const sizeName = match ? match[1] : "";
@@ -482,22 +513,22 @@ export default function SaleInvoice({
           image: prod.image,
           categoryId: prod.categoryId,
           variants: [{ product: prod, sizeName: sizeName || "قياسي" }],
-          minPrice: prod.price,
-          maxPrice: prod.price,
+          minPrice: effPrice,
+          maxPrice: effPrice,
           singleProduct: prod
         });
       } else {
         const existing = groupMap.get(groupKey)!;
         existing.variants.push({ product: prod, sizeName: sizeName || "قياسي" });
-        existing.minPrice = Math.min(existing.minPrice, prod.price);
-        existing.maxPrice = Math.max(existing.maxPrice, prod.price);
+        existing.minPrice = Math.min(existing.minPrice, effPrice);
+        existing.maxPrice = Math.max(existing.maxPrice, effPrice);
         // إذا كان هناك أكثر من منتج في المجموعة يلغى singleProduct
         existing.singleProduct = undefined;
       }
     });
 
     return Array.from(groupMap.values());
-  }, [filteredProducts]);
+  }, [filteredProducts, orderType]);
 
   return (
     <div className="flex-1 h-full flex flex-col md:flex-row overflow-hidden bg-stone-100">
@@ -831,15 +862,22 @@ export default function SaleInvoice({
 
                     {/* Pricing footer */}
                     <div className="flex items-center justify-between border-t border-stone-100 pt-2 mt-2">
-                      {isMulti ? (
-                        <span className="text-[10px] font-bold text-amber-700 font-mono bg-amber-50 px-2 py-0.5 rounded">
-                          من {group.minPrice.toFixed(2)} ر.س
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-[#2E7D32] font-mono bg-green-50 px-2 py-0.5 rounded">
-                          {group.minPrice.toFixed(2)} ر.س
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {isMulti ? (
+                          <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded ${orderType === "takeaway" ? "bg-amber-100 text-amber-900" : "text-amber-700 bg-amber-50"}`}>
+                            من {group.minPrice.toFixed(2)} ر.س
+                          </span>
+                        ) : (
+                          <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded ${orderType === "takeaway" ? "bg-amber-100 text-amber-900 font-extrabold" : "text-[#2E7D32] bg-green-50"}`}>
+                            {group.minPrice.toFixed(2)} ر.س
+                          </span>
+                        )}
+                        {orderType === "takeaway" && (
+                          <span className="text-[8px] bg-amber-200 text-amber-900 font-bold px-1 py-0.5 rounded">
+                            تطبيقات 🛵
+                          </span>
+                        )}
+                      </div>
                       
                       {isMulti ? (
                         <span className="text-[9px] font-bold text-[#2E7D32] bg-green-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
@@ -1142,8 +1180,8 @@ export default function SaleInvoice({
                     </div>
 
                     <div className="text-left">
-                      <span className="text-base font-mono font-extrabold text-[#2E7D32] bg-green-50 group-hover:bg-green-100 px-3 py-1 rounded-xl block">
-                        {v.product.price.toFixed(2)} ر.س
+                      <span className={`text-base font-mono font-extrabold px-3 py-1 rounded-xl block ${orderType === "takeaway" ? "text-amber-900 bg-amber-100 group-hover:bg-amber-200" : "text-[#2E7D32] bg-green-50 group-hover:bg-green-100"}`}>
+                        {getProductEffectivePrice(v.product, orderType).toFixed(2)} ر.س
                       </span>
                       {v.product.trackInventory && (
                         <span className="text-[9px] font-bold text-stone-400 block mt-0.5">

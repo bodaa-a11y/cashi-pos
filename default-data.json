@@ -1724,14 +1724,24 @@
       "fullName": "عبد الله محمد",
       "phone": "0551234567",
       "notes": "عميل دائم يفضل شاورما بدون مخلل",
-      "createdAt": "2026-07-04T16:06:35.121Z"
+      "createdAt": "2026-07-04T16:06:35.121Z",
+      "points": 0,
+      "loyaltyPoints": 0,
+      "creditBalance": 0,
+      "totalSpent": 0,
+      "visitsCount": 0
     },
     {
       "id": "cust-2",
       "fullName": "منى العتيبي",
       "phone": "0569876543",
       "notes": "تطلب ديلفري دائمًا",
-      "createdAt": "2026-07-04T16:06:35.121Z"
+      "createdAt": "2026-07-04T16:06:35.121Z",
+      "points": 0,
+      "loyaltyPoints": 0,
+      "creditBalance": 0,
+      "totalSpent": 0,
+      "visitsCount": 0
     }
   ],
   "held_orders": [],
@@ -1761,5 +1771,8 @@
   ],
   "inventory_transactions": [],
   "print_jobs": [],
-  "audit_logs": []
+  "audit_logs": [],
+  "expenses": [],
+  "customer_ledger": [],
+  "purchase_orders": []
 }

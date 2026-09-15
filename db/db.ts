@@ -253,4 +253,7 @@ export function setDBPath(dbPath: string) {
       fs.mkdirSync(d, { recursive: true });
     }
   });
+
+  // إعادة تحميل البيانات من المسار الجديد فوراً لضمان عدم الاحتفاظ ببيانات الذاكرة القديمة
+  loadLocalDB();
 }

@@ -25,6 +25,7 @@ export interface Product {
   nameEn: string;
   description?: string;
   price: number;
+  deliveryPrice?: number; // سعر تطبيقات التوصيل (هنقرستيشن، جاهز، تويو...)
   cost: number;
   imageUrl?: string;
   image?: string | null;

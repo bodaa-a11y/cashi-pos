@@ -154,32 +154,26 @@ async function startEmbeddedServer(): Promise<number> {
       console.error('[كاشي] خطأ أثناء نسخ قالب قاعدة البيانات:', err);
     }
   } else {
-    // إذا كان الملف موجوداً مسبقاً على جهاز الكاشير، نقوم بحذف الفواتير والورديات التجريبية القديمة لضمان البدء من الصفر
+    // إذا كان الملف موجوداً مسبقاً على جهاز الكاشير، نقوم بتصفير المبيعات السابقة مرة واحدة لإصدار 1.0.4
     try {
-      const existingDataRaw = fs.readFileSync(dbPath, 'utf-8');
-      const existingData = JSON.parse(existingDataRaw);
-      let modified = false;
-
-      // تصفير الفواتير والورديات السابقة لتهيئة العمل الحقيقي
-      if (Array.isArray(existingData.orders) && existingData.orders.length > 0) {
-        existingData.orders = [];
-        modified = true;
+      const raw = fs.readFileSync(dbPath, 'utf-8');
+      const data = JSON.parse(raw);
+      if (!data._zeroed_for_v104) {
+        data.orders = [];
+        data.held_orders = [];
+        data.shifts = [];
+        data.print_jobs = [];
+        data.audit_logs = [];
+        data.expenses = [];
+        data.customer_ledger = [];
+        data.purchase_orders = [];
+        data.inventory_transactions = [];
+        data._zeroed_for_v104 = true;
+        fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf-8');
+        console.log('[كاشي] 🧹 تم تصفير المبيعات القديمة تلقائياً لإصدار 1.0.4 بنجاح مع بقاء الأصناف والإعدادات!');
       }
-      if (Array.isArray(existingData.held_orders) && existingData.held_orders.length > 0) {
-        existingData.held_orders = [];
-        modified = true;
-      }
-      if (Array.isArray(existingData.shifts) && existingData.shifts.length > 0) {
-        existingData.shifts = [];
-        modified = true;
-      }
-
-      if (modified) {
-        fs.writeFileSync(dbPath, JSON.stringify(existingData, null, 2), 'utf-8');
-        console.log('[كاشي] 🧹 تم تصفير الفواتير والورديات القديمة بنجاح لبدء العمل الفعلي النظيف!');
-      }
-    } catch (cleanErr) {
-      console.warn('[كاشي] تحذير أثناء فحص وتنظيف البيانات القديمة:', cleanErr);
+    } catch (err) {
+      console.error('[كاشي] تحذير أثناء فحص قاعدة البيانات:', err);
     }
   }
 
@@ -268,13 +262,10 @@ function createMainWindow(port: number): BrowserWindow {
     return { action: 'deny' };
   });
 
-  // ─── التصغير إلى شريط النظام بدلاً من الإغلاق ────────
-  // عند محاولة إغلاق النافذة، نخفيها فقط ونبقي التطبيق يعمل
-  win.on('close', (event) => {
-    if (!app.isQuitting) {
-      event.preventDefault();
-      win.hide();
-    }
+  // ─── إغلاق التطبيق عند إغلاق النافذة ────────────────
+  win.on('close', () => {
+    (app as any).isQuitting = true;
+    app.quit();
   });
 
   // ─── أدوات المطور — فقط في وضع التطوير ─────────────────

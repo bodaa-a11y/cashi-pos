@@ -93,7 +93,7 @@ router.delete("/api/categories/:id", authenticate(["admin", "manager"]), (req, r
 
 // إضافة صنف منتج جديد بالمنيو
 router.post("/api/products", authenticate(["admin", "manager"]), (req, res) => {
-  const { nameAr, nameEn, categoryId, price, cost, barcode, trackInventory, quantity, image, imageBase64 } = req.body;
+  const { nameAr, nameEn, categoryId, price, deliveryPrice, cost, barcode, trackInventory, quantity, image, imageBase64 } = req.body;
   const db = readDB();
 
   let imageName = image || null;
@@ -110,6 +110,7 @@ router.post("/api/products", authenticate(["admin", "manager"]), (req, res) => {
     nameAr,
     nameEn,
     price: Number(price),
+    deliveryPrice: deliveryPrice !== undefined && deliveryPrice !== "" && Number(deliveryPrice) > 0 ? Number(deliveryPrice) : undefined,
     cost: Number(cost || 0),
     barcode: barcode || "",
     isActive: true,
@@ -127,7 +128,7 @@ router.post("/api/products", authenticate(["admin", "manager"]), (req, res) => {
 // تعديل صنف منتج بالمنيو
 router.put("/api/products/:id", authenticate(["admin", "manager"]), (req, res) => {
   const { id } = req.params;
-  const { nameAr, nameEn, categoryId, price, cost, barcode, trackInventory, quantity, image, imageBase64, isActive } = req.body;
+  const { nameAr, nameEn, categoryId, price, deliveryPrice, cost, barcode, trackInventory, quantity, image, imageBase64, isActive } = req.body;
   const db = readDB();
   const prod = db.products.find((p: any) => p.id === id);
 
@@ -147,6 +148,9 @@ router.put("/api/products/:id", authenticate(["admin", "manager"]), (req, res) =
   prod.nameEn = nameEn || prod.nameEn;
   prod.categoryId = categoryId || prod.categoryId;
   prod.price = price !== undefined ? Number(price) : prod.price;
+  if (deliveryPrice !== undefined) {
+    prod.deliveryPrice = deliveryPrice !== "" && Number(deliveryPrice) > 0 ? Number(deliveryPrice) : null;
+  }
   prod.cost = cost !== undefined ? Number(cost) : prod.cost;
   prod.barcode = barcode !== undefined ? barcode : prod.barcode;
   prod.trackInventory = trackInventory !== undefined ? !!trackInventory : prod.trackInventory;

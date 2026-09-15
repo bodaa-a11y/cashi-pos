@@ -79,10 +79,25 @@ export default function CheckoutColumn({
           </span>
         </div>
 
-        <h3 className="font-bold text-base flex items-center gap-1.5">
-          <ShoppingBag className="w-5 h-5" />
-          <span>فاتورة البيع الجارية</span>
-        </h3>
+        <div className="text-center">
+          <h3 className="font-bold text-base flex items-center gap-1.5 justify-center">
+            <ShoppingBag className="w-5 h-5" />
+            <span>فاتورة البيع الجارية</span>
+          </h3>
+          {orderType === "takeaway" ? (
+            <span className="text-[10px] bg-amber-400 text-stone-900 font-extrabold px-2 py-0.5 rounded-full shadow-sm inline-block">
+              سعر تطبيقات التوصيل 🛵
+            </span>
+          ) : orderType === "delivery" ? (
+            <span className="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full inline-block">
+              توصيل سفري 🚗
+            </span>
+          ) : (
+            <span className="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full inline-block">
+              صالة داخلي 🍽️
+            </span>
+          )}
+        </div>
 
         <button
           onClick={onCloseShift}
