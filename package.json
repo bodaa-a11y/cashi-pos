@@ -2,7 +2,7 @@
   "name": "cashi",
   "productName": "كاشي - نظام الكاشير المتكامل",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "نظام كاشي المتكامل لنقطة البيع - برنامج سطح مكتب ويندوز",
   "main": "dist-electron/main.js",
   "type": "module",
