@@ -13,6 +13,7 @@ interface ShiftReport {
   totalSales: number;
   cashSales: number;
   cardSales: number;
+  appSales?: number;
   expectedCash: number;
   orderCount: number;
 }
@@ -125,7 +126,7 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
         <meta charset="utf-8">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-          @page { margin: 0; size: 80mm auto; }
+          @page { margin: 0; size: 70mm auto; }
           * { box-sizing: border-box; }
           body {
             margin: 0;
@@ -137,12 +138,13 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
             text-align: right;
           }
           .report-container {
-            width: 72mm;
-            max-width: 72mm;
+            width: 68mm;
+            max-width: 68mm;
             margin: 0 auto;
-            padding: 6px 4px;
+            padding: 6px 12px 6px 6px;
             font-size: 11px;
             line-height: 1.4;
+            box-sizing: border-box;
           }
           .text-center { text-align: center; }
           .report-header {
@@ -188,6 +190,9 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
             <div class="report-info-row" style="font-weight: bold;"><span>إجمالي المبيعات:</span><span>${(report?.totalSales || 0).toFixed(2)} ${bCurrency}</span></div>
             <div class="report-info-row"><span>المبيعات النقدية (كاش):</span><span>${(report?.cashSales || 0).toFixed(2)} ${bCurrency}</span></div>
             <div class="report-info-row"><span>مبيعات الشبكة (مدى/فيزا):</span><span>${(report?.cardSales || 0).toFixed(2)} ${bCurrency}</span></div>
+            ${(report?.appSales || (eodData?.summary?.appSales || 0)) > 0 ? `
+            <div class="report-info-row" style="color: #b45309;"><span>مبيعات التطبيقات (توصيل):</span><span>${((report?.appSales ?? eodData?.summary?.appSales) || 0).toFixed(2)} ${bCurrency}</span></div>
+            ` : ''}
             <div class="report-info-row"><span>عدد الفواتير الكلي:</span><span>${report?.orderCount || 0} فاتورة</span></div>
           </div>
 
@@ -285,7 +290,7 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
             @page {
               margin: 0;
-              size: 80mm auto;
+              size: 70mm auto;
             }
             * {
               box-sizing: border-box;
@@ -300,10 +305,10 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
               text-align: right;
             }
             .report-container {
-              width: 72mm;
-              max-width: 72mm;
+              width: 68mm;
+              max-width: 68mm;
               margin: 0 auto;
-              padding: 6px 4px;
+              padding: 6px 12px 6px 6px;
               font-size: 11px;
               line-height: 1.4;
               box-sizing: border-box;
@@ -430,22 +435,26 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
           <form onSubmit={handleCloseShiftSubmit} className="p-6 space-y-6">
             
             {/* Quick Shift Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-right">
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 shadow-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-right">
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 shadow-sm">
                 <p className="text-xs text-stone-500 font-medium mb-1">إجمالي المبيعات</p>
-                <p className="text-lg font-bold text-[#2E7D32] font-mono">{(report?.totalSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
+                <p className="text-base font-bold text-[#2E7D32] font-mono">{(report?.totalSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
               </div>
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs text-stone-500 font-medium mb-1">المبيعات النقدية (كاش)</p>
-                <p className="text-lg font-bold text-stone-800 font-mono">{(report?.cashSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 shadow-sm">
+                <p className="text-xs text-stone-500 font-medium mb-1">المبيعات النقدية</p>
+                <p className="text-base font-bold text-stone-800 font-mono">{(report?.cashSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
               </div>
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs text-stone-500 font-medium mb-1">مبيعات الشبكة (مدى/بطاقة)</p>
-                <p className="text-lg font-bold text-stone-800 font-mono">{(report?.cardSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 shadow-sm">
+                <p className="text-xs text-stone-500 font-medium mb-1">مبيعات الشبكة</p>
+                <p className="text-base font-bold text-stone-800 font-mono">{(report?.cardSales || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
               </div>
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs text-stone-500 font-medium mb-1">عدد الفواتير المنفذة</p>
-                <p className="text-lg font-bold text-stone-800 font-mono">{report?.orderCount} <span className="text-xs">فاتورة</span></p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 shadow-sm">
+                <p className="text-xs text-amber-700 font-medium mb-1">تطبيقات التوصيل</p>
+                <p className="text-base font-bold text-amber-800 font-mono">{((report?.appSales) || 0).toFixed(2)} <span className="text-xs">ر.س</span></p>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 shadow-sm">
+                <p className="text-xs text-stone-500 font-medium mb-1">عدد الفواتير</p>
+                <p className="text-base font-bold text-stone-800 font-mono">{report?.orderCount} <span className="text-xs">فاتورة</span></p>
               </div>
             </div>
 

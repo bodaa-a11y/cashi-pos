@@ -625,7 +625,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
           <style>
             @page {
               margin: 0;
-              size: 80mm auto;
+              size: 70mm auto;
             }
             * {
               box-sizing: border-box;
@@ -641,10 +641,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
               -webkit-print-color-adjust: exact;
             }
             .receipt-container {
-              width: 72mm;
-              max-width: 72mm;
+              width: 68mm;
+              max-width: 68mm;
               margin: 0 auto;
-              padding: 6px 4px;
+              padding: 6px 12px 6px 6px;
               font-size: 11px;
               line-height: 1.4;
               box-sizing: border-box;
@@ -852,10 +852,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
         <head>
           <meta charset="utf-8">
           <style>
-            @page { margin: 0; size: 80mm auto; }
+            @page { margin: 0; size: 70mm auto; }
             * { box-sizing: border-box; }
             body { margin: 0; padding: 0; font-family: 'Tahoma', 'Cairo', sans-serif; direction: rtl; text-align: right; }
-            .receipt-container { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 6px 4px; font-size: 11px; }
+            .receipt-container { width: 68mm; max-width: 68mm; margin: 0 auto; padding: 6px 12px 6px 6px; font-size: 11px; box-sizing: border-box; }
           </style>
         </head>
         <body>
@@ -3057,10 +3057,10 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
                             <head>
                               <meta charset="utf-8">
                               <style>
-                                @page { margin: 0; size: 80mm auto; }
+                                @page { margin: 0; size: 70mm auto; }
                                 * { box-sizing: border-box; }
                                 body { margin: 0; padding: 0; font-family: 'Tahoma', 'Arial', sans-serif; direction: rtl; text-align: right; }
-                                .receipt-container { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 8px 4px; font-size: 11px; text-align: center; }
+                                .receipt-container { width: 68mm; max-width: 68mm; margin: 0 auto; padding: 8px 12px 8px 6px; font-size: 11px; text-align: center; box-sizing: border-box; }
                               </style>
                             </head>
                             <body>

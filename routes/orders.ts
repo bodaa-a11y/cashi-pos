@@ -98,12 +98,14 @@ function calculateOrdersSummary(db: any, orders: any[]) {
 
   let cashSales = 0;
   let cardSales = 0;
+  let appSales = 0;
   orders.forEach((o: any) => {
     (o.payments || []).forEach((p: any) => {
       // Adjust payment share if refunded
       const refundRatio = o.refundedAmount && o.total ? (1 - o.refundedAmount / o.total) : 1;
       if (p.method === "cash") cashSales += p.amount * refundRatio;
       else if (p.method === "card") cardSales += p.amount * refundRatio;
+      else if (p.method === "app") appSales += p.amount * refundRatio;
     });
   });
 
@@ -125,10 +127,11 @@ function calculateOrdersSummary(db: any, orders: any[]) {
     value: categorySalesMap[name]
   }));
 
-  // مبيعات يومية للرسم البياني
+  // مبيعات يومية للرسم البياني مع مراعاة اليوم التشغيلي عبر منتصف الليل
   const dailySalesMap: any = {};
   orders.forEach((o: any) => {
-    const dateStr = o.createdAt.split("T")[0];
+    const dateStr = getOrderBusinessDate(o, db) || (o.createdAt ? o.createdAt.split("T")[0] : "");
+    if (!dateStr) return;
     const activeTotal = o.total - (o.refundedAmount || 0);
     dailySalesMap[dateStr] = (dailySalesMap[dateStr] || 0) + activeTotal;
   });
@@ -173,6 +176,7 @@ function calculateOrdersSummary(db: any, orders: any[]) {
     orderCount: orders.length,
     cashSales,
     cardSales,
+    appSales,
     categorySales,
     chartData,
     staffPerformance,
@@ -448,6 +452,7 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
   const orderNumber = db.orders.length + 1;
   const syncedOrder = {
     ...order,
+    businessDate: getOrderBusinessDate(order, db),
     subtotal: serverSubtotal,
     discountAmount: serverDiscount,
     taxAmount: serverTax,

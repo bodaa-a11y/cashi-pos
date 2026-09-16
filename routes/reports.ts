@@ -52,13 +52,28 @@ function ordersOfDay(db: any, dateStr: string) {
     const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
     if (!isCompleted) return false;
 
-    // احتساب الطلب بناءً على اليوم التشغيلي للوردية (لتشمل طلبات ما بعد منتصف الليل حتى الفجر)
+    // 1. احتساب الطلب بناءً على اليوم التشغيلي للوردية (لتشمل طلبات ما بعد منتصف الليل)
     const bDate = getOrderBusinessDate(o, db);
     if (bDate === dateStr) return true;
 
-    // كحل احتياطي للتوافق
-    const d = new Date(o.createdAt);
-    return !isNaN(d.getTime()) && d >= from && d <= to;
+    // 2. لو الطلب تابع لوردية مفتوحة وفتحت في اليوم المطلوب — ده يعني إن الوردية عبرت منتصف الليل
+    if (o.shiftId && Array.isArray(db.shifts)) {
+      const shift = db.shifts.find((s: any) => s.id === o.shiftId);
+      if (shift && shift.openedAt) {
+        const shiftOpenDate = new Date(shift.openedAt);
+        if (!isNaN(shiftOpenDate.getTime()) && shiftOpenDate >= from && shiftOpenDate <= to) {
+          return true; // الطلب تابع لوردية فتحت في نفس اليوم — حتى لو الطلب بعد منتصف الليل
+        }
+      }
+    }
+
+    // 3. فقط الطلبات بدون وردية: fallback للتاريخ الفعلي
+    if (!o.shiftId) {
+      const d = new Date(o.createdAt);
+      return !isNaN(d.getTime()) && d >= from && d <= to;
+    }
+
+    return false;
   });
 }
 
@@ -94,7 +109,7 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
     }
 
     let totalSales = 0, totalTax = 0, totalDiscount = 0, totalRefunded = 0;
-    let cashSales = 0, cardSales = 0, otherSales = 0, totalCost = 0;
+    let cashSales = 0, cardSales = 0, appSales = 0, otherSales = 0, totalCost = 0;
 
     const cashierMap: any = {};
     const hourlyMap: any = {};
@@ -114,6 +129,7 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
         const amt = r2((Number(p.amount) || 0) * refundRatio);
         if (p.method === "cash") cashSales += amt;
         else if (p.method === "card") cardSales += amt;
+        else if (p.method === "app") appSales += amt;
         else otherSales += amt;
       });
 
@@ -223,6 +239,7 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
         totalDiscount: r2(totalDiscount),
         cashSales: r2(cashSales),
         cardSales: r2(cardSales),
+        appSales: r2(appSales),
         otherSales: r2(otherSales),
         avgOrderValue: orders.length ? r2(totalSales / orders.length) : 0,
         grossCost: r2(totalCost),
@@ -264,7 +281,7 @@ router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) 
     orders = ordersOfDay(db, today);
   }
 
-  let todaySales = 0, todayCash = 0, todayCard = 0;
+  let todaySales = 0, todayCash = 0, todayCard = 0, todayApp = 0;
   const cashierMap: any = {};
 
   for (const o of orders) {
@@ -273,6 +290,7 @@ router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) 
     (o.payments || []).forEach((p: any) => {
       if (p.method === "cash") todayCash += p.amount;
       else if (p.method === "card") todayCard += p.amount;
+      else if (p.method === "app") todayApp += p.amount;
     });
     const id = o.cashierId || "unknown";
     if (!cashierMap[id]) cashierMap[id] = { id, name: o.cashierName || "كاشير", orders: 0, sales: 0, lastActivityAt: o.createdAt };
@@ -324,6 +342,7 @@ router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) 
       sales: r2(todaySales),
       cash: r2(todayCash),
       card: r2(todayCard),
+      app: r2(todayApp),
       orderCount: orders.length,
       heldOrdersCount: (db.held_orders || []).length,
     },

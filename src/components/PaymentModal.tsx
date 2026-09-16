@@ -79,7 +79,7 @@ export default function PaymentModal({
   notes,
   defaultPrint = true,
 }: PaymentModalProps) {
-  const [method, setMethod] = useState<"cash" | "card" | "split" | "credit">("cash");
+  const [method, setMethod] = useState<"cash" | "card" | "split" | "credit" | "app">("cash");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("cust-1");
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>("عميل نقدي افتراضي");
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>("");
@@ -144,7 +144,7 @@ export default function PaymentModal({
   useEffect(() => {
     if (method === "cash") {
       setTendered(String(total));
-    } else if (method === "card") {
+    } else if (method === "card" || method === "app") {
       setTendered(String(total));
     } else if (method === "credit") {
       setTendered("0");
@@ -212,6 +212,16 @@ export default function PaymentModal({
         id: `pay-${Date.now()}-1`,
         orderId: clientUuid,
         method: "card",
+        amount: total,
+        tendered: total,
+        changeDue: 0,
+        createdAt: new Date().toISOString(),
+      });
+    } else if (method === "app") {
+      paymentsArray.push({
+        id: `pay-${Date.now()}-1`,
+        orderId: clientUuid,
+        method: "app",
         amount: total,
         tendered: total,
         changeDue: 0,
@@ -306,7 +316,7 @@ export default function PaymentModal({
         <style>
           @page {
             margin: 0;
-            size: 80mm auto;
+            size: 70mm auto;
           }
           * {
             box-sizing: border-box;
@@ -322,10 +332,10 @@ export default function PaymentModal({
             -webkit-print-color-adjust: exact;
           }
           .receipt-container {
-            width: 72mm;
-            max-width: 72mm;
+            width: 68mm;
+            max-width: 68mm;
             margin: 0 auto;
-            padding: 6px 4px;
+            padding: 6px 12px 6px 6px;
             font-size: 11px;
             line-height: 1.4;
             box-sizing: border-box;
@@ -484,7 +494,7 @@ export default function PaymentModal({
             <div class="receipt-total-row" style="font-weight: bold;"><span>طريقة الدفع:</span><span></span></div>
             ${paymentsArray.map(p => `
               <div class="receipt-total-row">
-                <span>${p.method === 'cash' ? 'نقداً (كاش)' : 'مدى / فيزا (شبكة)'}:</span>
+                <span>${p.method === 'cash' ? 'نقداً (كاش)' : p.method === 'card' ? 'مدى / فيزا (شبكة)' : p.method === 'app' ? 'تطبيقات توصيل' : 'دفع آجل'}:</span>
                 <span>${p.amount.toFixed(2)} ${bCurrency}</span>
               </div>
             `).join('')}
@@ -521,7 +531,7 @@ export default function PaymentModal({
         <style>
           @page {
             margin: 0;
-            size: 80mm auto;
+            size: 70mm auto;
           }
           * {
             box-sizing: border-box;
@@ -537,10 +547,10 @@ export default function PaymentModal({
             -webkit-print-color-adjust: exact;
           }
           .kitchen-container {
-            width: 72mm;
-            max-width: 72mm;
+            width: 68mm;
+            max-width: 68mm;
             margin: 0 auto;
-            padding: 6px 4px;
+            padding: 6px 12px 6px 6px;
             font-size: 13px;
             line-height: 1.4;
             box-sizing: border-box;
@@ -669,7 +679,7 @@ export default function PaymentModal({
             tax: tax || 0,
             total: total,
             payments: paymentsArray.map(p => ({
-              method: p.method === 'cash' ? 'نقداً' : 'شبكة',
+              method: p.method === 'cash' ? 'نقداً' : p.method === 'app' ? 'تطبيقات' : 'شبكة',
               amount: p.amount
             })),
             tendered: method === 'cash' ? tenderedValue : undefined,
@@ -816,7 +826,7 @@ export default function PaymentModal({
                   className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-sm rounded-xl transition-all border border-stone-200 flex items-center justify-center gap-2"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>إعادة طباعة الفاتورة 80mm</span>
+                  <span>إعادة طباعة الفاتورة 70mm</span>
                 </button>
                 <button
                   onClick={onPaymentSuccess}
@@ -832,21 +842,20 @@ export default function PaymentModal({
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-stone-400 mb-2 font-bold uppercase tracking-widest flex items-center gap-1">
                 <Receipt className="w-3.5 h-3.5" />
-                معاينة طابعة الفواتير الحرارية (80mm)
+                معاينة طابعة الفواتير الحرارية (70mm)
               </span>
-              
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 shadow-inner max-h-[380px] overflow-y-auto w-full flex justify-center">
-                <div className="bg-white border border-stone-300 p-4 shadow-sm rounded-lg" dangerouslySetInnerHTML={{ __html: receiptHTML }}>
-                </div>
-              </div>
+              <div 
+                className="bg-white p-3 rounded-lg shadow-inner border border-stone-200 overflow-y-auto max-h-[450px] w-full max-w-[340px] text-black"
+                dangerouslySetInnerHTML={{ __html: receiptHTML }}
+              />
             </div>
 
           </div>
         ) : (
-          /* Payment forms */
+          /* Payment input mode */
           <div className="p-6 space-y-6">
-            
-            {/* Amount due highlight */}
+
+            {/* Header info */}
             <div className="bg-stone-50 border border-stone-200 rounded-xl p-5 flex items-center justify-between text-right">
               <div>
                 <p className="text-xs text-stone-500 font-bold">طريقة الطلب</p>
@@ -915,48 +924,60 @@ export default function PaymentModal({
             </div>
 
             {/* Selector methods */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
               <button
                 type="button"
                 onClick={() => setMethod("cash")}
-                className={`py-4 px-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all font-bold text-sm ${
+                className={`py-3.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs ${
                   method === "cash"
                     ? "bg-[#EAF4EA] border-[#2E7D32] text-[#2E7D32] shadow-sm"
                     : "border-stone-200 hover:bg-stone-50 text-stone-700"
                 }`}
               >
-                <Coins className="w-6 h-6" />
+                <Coins className="w-5 h-5" />
                 <span>دفع كاش</span>
               </button>
               <button
                 type="button"
                 onClick={() => setMethod("card")}
-                className={`py-4 px-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all font-bold text-sm ${
+                className={`py-3.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs ${
                   method === "card"
                     ? "bg-[#EAF4EA] border-[#2E7D32] text-[#2E7D32] shadow-sm"
                     : "border-stone-200 hover:bg-stone-50 text-stone-700"
                 }`}
               >
-                <CreditCard className="w-6 h-6" />
+                <CreditCard className="w-5 h-5" />
                 <span>بطاقة / شبكة</span>
               </button>
               <button
                 type="button"
+                onClick={() => setMethod("app")}
+                className={`py-3.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs ${
+                  method === "app"
+                    ? "bg-amber-50 border-amber-500 text-amber-700 shadow-sm"
+                    : "border-stone-200 hover:bg-stone-50 text-stone-700"
+                }`}
+              >
+                <span className="text-lg">📱</span>
+                <span>تطبيقات توصيل</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setMethod("split")}
-                className={`py-4 px-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all font-bold text-sm ${
+                className={`py-3.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs ${
                   method === "split"
                     ? "bg-[#EAF4EA] border-[#2E7D32] text-[#2E7D32] shadow-sm"
                     : "border-stone-200 hover:bg-stone-50 text-stone-700"
                 }`}
               >
-                <Receipt className="w-6 h-6" />
+                <Receipt className="w-5 h-5" />
                 <span>تقسيم (كاش+شبكة)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setMethod("credit")}
                 disabled={selectedCustomerId === "cust-1"}
-                className={`py-4 px-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all font-bold text-sm ${
+                className={`py-3.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all font-bold text-xs ${
                   selectedCustomerId === "cust-1" ? "opacity-40 cursor-not-allowed border-stone-100 text-stone-400" :
                   method === "credit"
                     ? "bg-red-50 border-red-500 text-red-700 shadow-sm"
@@ -964,7 +985,7 @@ export default function PaymentModal({
                 }`}
                 title={selectedCustomerId === "cust-1" ? "اختر عميل حقيقي لتفعيل الدفع الآجل" : ""}
               >
-                <UserCheck className="w-6 h-6" />
+                <UserCheck className="w-5 h-5" />
                 <span>دفع آجل</span>
               </button>
             </div>

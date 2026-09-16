@@ -81,6 +81,7 @@ export default function EndOfDayReport() {
         <tr><td>إجمالي المبيعات:</td><td style="text-align:left;font-weight:bold;">${fmt(s.totalSales)} ر.س</td></tr>
         <tr><td>نقدي:</td><td style="text-align:left;">${fmt(s.cashSales)} ر.س</td></tr>
         <tr><td>شبكة:</td><td style="text-align:left;">${fmt(s.cardSales)} ر.س</td></tr>
+        ${(s.appSales || 0) > 0 ? `<tr><td>تطبيقات التوصيل:</td><td style="text-align:left;">${fmt(s.appSales)} ر.س</td></tr>` : ''}
         <tr><td>الضريبة:</td><td style="text-align:left;">${fmt(s.totalTax)} ر.س</td></tr>
         <tr><td>الخصومات:</td><td style="text-align:left;">${fmt(s.totalDiscount)} ر.س</td></tr>
         <tr><td>مرتجعات:</td><td style="text-align:left;">${fmt(s.totalRefunded)} ر.س</td></tr>
@@ -164,7 +165,7 @@ export default function EndOfDayReport() {
       {data && s && (
         <>
           {/* ── بطاقات الملخص ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <div className="bg-white rounded-2xl border border-stone-200 p-4">
               <div className="flex items-center gap-2 text-stone-500 text-xs mb-1"><Receipt className="w-4 h-4" /> عدد الفواتير</div>
               <div className="text-2xl font-bold text-stone-800">{s.orderCount}</div>
@@ -176,6 +177,10 @@ export default function EndOfDayReport() {
             <div className="bg-white rounded-2xl border border-stone-200 p-4">
               <div className="flex items-center gap-2 text-stone-500 text-xs mb-1"><Banknote className="w-4 h-4" /> نقدي / شبكة</div>
               <div className="text-sm font-bold text-stone-800">{fmt(s.cashSales)} / {fmt(s.cardSales)}</div>
+            </div>
+            <div className="bg-amber-50 rounded-2xl border border-amber-200 p-4">
+              <div className="flex items-center gap-2 text-amber-700 text-xs mb-1">📱 تطبيقات توصيل</div>
+              <div className="text-2xl font-bold text-amber-900">{fmt(s.appSales || 0)} <span className="text-xs">ر.س</span></div>
             </div>
             <div className="bg-[#2E7D32] rounded-2xl p-4 text-white">
               <div className="flex items-center gap-2 text-white/70 text-xs mb-1"><CreditCard className="w-4 h-4" /> صافي الربح</div>

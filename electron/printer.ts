@@ -776,9 +776,10 @@ try {
     }
 
     // عرض منطقة الطباعة الفعلية بالبكسل (203 DPI معيار الطابعات الحرارية)
+    // نستخدم 68mm مع هامش أمان يمنع قص الحروف من اليمين
     const DPI = 203;
-    const printableWidthMM = paperW === 80 ? 72 : 48;
-    const printableWidthPx = Math.round((printableWidthMM / 25.4) * DPI); // ~576 لـ 80mm
+    const printableWidthMM = paperW === 80 ? 68 : 48;
+    const printableWidthPx = Math.round((printableWidthMM / 25.4) * DPI); // ~544px أمان تام للأطراف
 
     // إنشاء نافذة مخفية لعرض HTML الفاتورة
     const renderWindow = new BrowserWindow({

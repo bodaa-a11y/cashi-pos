@@ -98,6 +98,7 @@ export interface Order {
   completedAt?: string;
   items: OrderItem[];
   payments: Payment[];
+  businessDate?: string;
   syncedAt?: string;
   ignoreShiftValidation?: boolean;
 }
@@ -105,7 +106,7 @@ export interface Order {
 export interface Payment {
   id: string;
   orderId: string;
-  method: 'cash' | 'card' | 'split' | 'credit' | 'other';
+  method: 'cash' | 'card' | 'split' | 'credit' | 'app' | 'other';
   amount: number;
   tendered: number;
   changeDue: number;
