@@ -158,7 +158,7 @@ async function startEmbeddedServer(): Promise<number> {
     try {
       const raw = fs.readFileSync(dbPath, 'utf-8');
       const data = JSON.parse(raw);
-      if (!data._zeroed_for_v104) {
+      if (!data._zeroed_for_v105) {
         data.orders = [];
         data.held_orders = [];
         data.shifts = [];
@@ -168,9 +168,10 @@ async function startEmbeddedServer(): Promise<number> {
         data.customer_ledger = [];
         data.purchase_orders = [];
         data.inventory_transactions = [];
-        data._zeroed_for_v104 = true;
+        data.priceAuditLog = [];
+        data._zeroed_for_v105 = true;
         fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf-8');
-        console.log('[كاشي] 🧹 تم تصفير المبيعات القديمة تلقائياً لإصدار 1.0.4 بنجاح مع بقاء الأصناف والإعدادات!');
+        console.log('[كاشي] 🧹 تم تصفير المبيعات القديمة تلقائياً لإصدار 1.0.5 بنجاح مع بقاء الأصناف والإعدادات!');
       }
     } catch (err) {
       console.error('[كاشي] تحذير أثناء فحص قاعدة البيانات:', err);
