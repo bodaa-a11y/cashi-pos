@@ -214,10 +214,10 @@ function createMainWindow(port: number): BrowserWindow {
     console.warn('[كاشي] ⚠️ لم يتم العثور على أيقونة التطبيق');
   }
 
-  // إنشاء النافذة الرئيسية بدون إطار (frameless) وبملء الشاشة
+  // إنشاء النافذة الرئيسية مع شريط عنوان ويندوز وأزرار التحكم القياسية (إغلاق، تصغير، تكبير)
   const win = new BrowserWindow({
-    fullscreen: true,
-    frame: false,
+    fullscreen: false,
+    frame: true,
     minWidth: 1024,
     minHeight: 768,
     icon,
@@ -236,8 +236,9 @@ function createMainWindow(port: number): BrowserWindow {
   // تحميل التطبيق من السيرفر المدمج
   win.loadURL(`http://localhost:${port}`);
 
-  // عرض النافذة عندما يكتمل التحميل
+  // عرض النافذة مكبرة (Maximized) عندما يكتمل التحميل
   win.once('ready-to-show', () => {
+    win.maximize();
     win.show();
     win.focus();
   });
@@ -559,12 +560,9 @@ app.on('will-quit', () => {
   }
 });
 
-// على macOS، لا تغلق التطبيق عند إغلاق جميع النوافذ
+// عند إغلاق النوافذ، إنهاء التطبيق بالكامل
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    // على Windows و Linux، أخفِ فقط (التطبيق يبقى في شريط النظام)
-    // لا نغلق التطبيق هنا لأنه يعمل كخدمة
-  }
+  app.quit();
 });
 
 // على macOS، عند إعادة تنشيط التطبيق

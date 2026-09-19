@@ -91,18 +91,14 @@ router.get("/api/reports/end-of-day", authenticate(["admin", "manager", "cashier
     let orders: any[] = [];
 
     if (targetShift) {
-      // عند طلب تقرير وردية معينة: جلب كافة فواتير الوردية بالكامل من بدايتها حتى نهايتها عبر منتصف الليل
+      // عند طلب تقرير وردية معينة: الاعتماد حصراً على shiftId للوردية من بدايتها حتى نهايتها دون أي ارتباط بالساعة 12 أو التقويم
       if (targetShift.openedAt) {
-        date = getOrderBusinessDate({ createdAt: targetShift.openedAt }, db);
+        date = targetShift.openedAt.split("T")[0];
       }
       orders = (db.orders || []).filter((o: any) => {
         const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
         if (!isCompleted) return false;
-        if (o.shiftId === targetShift.id) return true;
-        const ot = new Date(o.createdAt).getTime();
-        const start = new Date(targetShift.openedAt).getTime();
-        const end = targetShift.closedAt ? new Date(targetShift.closedAt).getTime() : Date.now();
-        return ot >= start && ot <= end && (!o.shiftId || o.shiftId === targetShift.id);
+        return o.shiftId === targetShift.id;
       });
     } else {
       orders = ordersOfDay(db, date);
@@ -269,13 +265,13 @@ router.get("/api/manager/live", authenticate(["admin", "manager"]), (_req, res) 
   const today = new Date().toISOString().split("T")[0];
   const activeShift = (db.shifts || []).find((s: any) => s.status === "open") || null;
 
-  // في حال وجود وردية مفتوحة تمتد عبر منتصف الليل، يتم احتساب كافة فواتيرها كاملة في المراقبة اللحظية
+  // في حال وجود وردية مفتوحة، يتم احتساب فواتيرها حصراً بمعرف الوردية activeShift.id دون خلط مع أي فواتير أخرى
   let orders: any[] = [];
   if (activeShift) {
     orders = (db.orders || []).filter((o: any) => {
       const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
       if (!isCompleted) return false;
-      return o.shiftId === activeShift.id || getOrderBusinessDate(o, db) === today;
+      return o.shiftId === activeShift.id;
     });
   } else {
     orders = ordersOfDay(db, today);

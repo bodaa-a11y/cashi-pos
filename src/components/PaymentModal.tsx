@@ -277,8 +277,7 @@ export default function PaymentModal({
       notes: notes || "",
       createdAt: new Date().toISOString(),
       items: orderItems,
-      payments: paymentsArray,
-      ignoreShiftValidation: true // For local offline-first fallback
+      payments: paymentsArray
     };
 
     // 1. Generate Receipt HTML (generate it first so it's always ready for printing/display!)
@@ -720,7 +719,8 @@ export default function PaymentModal({
       });
 
       if (!res.ok) {
-        throw new Error("فشلت مزامنة الفاتورة مع خادم المحل");
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "فشلت مزامنة الفاتورة مع خادم المحل");
       }
 
       const responseData = await res.json();
@@ -736,23 +736,9 @@ export default function PaymentModal({
       }
 
       setSuccess(true);
-    } catch (e) {
-      console.error("Sync or print failed, fallback to offline queue:", e);
-      setError("فشل الاتصال بالخادم. تم تخزين الفاتورة في طابور الأوفلاين للتزامن.");
-      
-      // Dispatch offline queue event to App.tsx
-      window.dispatchEvent(new CustomEvent("pos-offline-order-added", { detail: orderDoc }));
-
-      // Trigger local mock print with local HTML if requested
-      if (shouldPrint) {
-        try {
-          await printReceiptMockAndPhysical(localOrderNumber, html, kitchenHTML, clientUuid, orderItems);
-        } catch (err) {
-          console.error("Local preview print failed:", err);
-        }
-      }
-
-      setSuccess(true);
+    } catch (e: any) {
+      console.error("خطأ أثناء حفظ الفاتورة:", e);
+      setError(e.message || "حدث خطأ أثناء حفظ الفاتورة");
     } finally {
       setLoading(false);
     }

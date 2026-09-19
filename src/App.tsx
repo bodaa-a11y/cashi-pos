@@ -94,10 +94,6 @@ function CashiApp() {
   const [showCloseShiftModal, setShowCloseShiftModal] = useState<boolean>(false);
   const [paymentParams, setPaymentParams] = useState<any | null>(null);
   
-  // Connection states (Offline-First criteria)
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-  const [offlineOrders, setOfflineOrders] = useState<any[]>([]);
-  const [syncing, setSyncing] = useState<boolean>(false);
   const [heldCount, setHeldCount] = useState<number>(0);
 
   // فحص إعدادات المنشأة عند بدء التشغيل
@@ -128,47 +124,20 @@ function CashiApp() {
     checkSettings();
   }, []);
 
-  // Detect internet connection changes
+  // تنظيف وإلغاء طوابير الأوفلاين القديمة عند الإقلاع لضمان عدم تسريب فواتير سابقة
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      triggerSyncRoutine();
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    try {
+      localStorage.removeItem("pos_offline_orders");
+    } catch {}
 
     const handleLogoutEvent = () => {
       handleLogout();
     };
 
-    const handleOfflineOrderAdded = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const newOrder = customEvent.detail;
-      setOfflineOrders(prev => {
-        const updated = [...prev, newOrder];
-        localStorage.setItem("pos_offline_orders", JSON.stringify(updated));
-        return updated;
-      });
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     window.addEventListener("pos-logout", handleLogoutEvent);
-    window.addEventListener("pos-offline-order-added", handleOfflineOrderAdded);
-
-    setIsOnline(navigator.onLine);
-
-    const stored = localStorage.getItem("pos_offline_orders");
-    if (stored) {
-      setOfflineOrders(JSON.parse(stored));
-    }
 
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       window.removeEventListener("pos-logout", handleLogoutEvent);
-      window.removeEventListener("pos-offline-order-added", handleOfflineOrderAdded);
     };
   }, []);
 
@@ -286,39 +255,6 @@ function CashiApp() {
     }
   }, [settingsChecked]);
 
-  // Sync Offline Queue Routine
-  const triggerSyncRoutine = async () => {
-    if (offlineOrders.length === 0 || syncing || !navigator.onLine) return;
-    setSyncing(true);
-
-    const queue = [...offlineOrders];
-    const remainingQueue: any[] = [];
-
-    for (const order of queue) {
-      try {
-        const res = await fetch("/api/orders/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(order)
-        });
-
-        if (!res.ok) {
-          remainingQueue.push(order);
-        }
-      } catch (e) {
-        remainingQueue.push(order);
-      }
-    }
-
-    setOfflineOrders(remainingQueue);
-    localStorage.setItem("pos_offline_orders", JSON.stringify(remainingQueue));
-    setSyncing(false);
-
-    if (remainingQueue.length === 0 && queue.length > 0) {
-      alert("تمت مزامنة كافة الفواتير المخزنة محلياً بنجاح مع الخادم المركزي! 🎉");
-    }
-  };
-
   // Restore Held order callback
   const handleRestoreHeldOrder = async (held: HeldOrder) => {
     const injectEvent = new CustomEvent("pos-restore-held", { detail: held });
@@ -337,24 +273,6 @@ function CashiApp() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-stone-100 selection:bg-green-100 select-none overflow-hidden">
-      
-      {/* Top Banner indicating unsynced offline queue */}
-      {offlineOrders.length > 0 && (
-        <div className="bg-orange-500 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-3 shrink-0">
-          <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
-          <span>
-            تنبيه: يوجد عدد ({offlineOrders.length}) فواتير تم بيعها أوفلاين معلقة بانتظار المزامنة.
-          </span>
-          <button
-            onClick={triggerSyncRoutine}
-            disabled={syncing || !isOnline}
-            className="bg-white text-orange-700 px-3 py-1 rounded-md hover:bg-stone-50 transition-all font-extrabold flex items-center gap-1 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
-            <span>مزامنة الآن</span>
-          </button>
-        </div>
-      )}
 
       {/* Screen Routing */}
       {activeScreen === "splash" && (

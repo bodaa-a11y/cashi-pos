@@ -354,15 +354,17 @@ router.post("/api/orders/sync", authenticate(["admin", "manager", "cashier", "wa
   const order = req.body;
   const db = readDB();
 
-  const shift = db.shifts.find((s: any) => s.id === order.shiftId);
-  if (!shift && !order.ignoreShiftValidation) {
-    return res.status(400).json({ error: "لا يوجد وردية صالحة لمزامنة الفاتورة عليها" });
-  }
-
-  const existingOrder = db.orders.find((o: any) => o.id === order.id);
+  const existingOrder = (db.orders || []).find((o: any) => o.id === order.id);
   if (existingOrder) {
     return res.json({ success: true, duplicated: true, order: existingOrder });
   }
+
+  // التحقق من وجود وردية مفتوحة وربط الفاتورة بها بدقة تامة
+  const activeShift = (db.shifts || []).find((s: any) => s.status === "open");
+  if (!activeShift) {
+    return res.status(400).json({ error: "لا توجد وردية مفتوحة حالياً! يرجى فتح وردية أولاً قبل إصدار الفواتير." });
+  }
+  order.shiftId = activeShift.id;
 
   // التحقق المالي وإعادة الحساب على السيرفر
   let serverSubtotal = 0;

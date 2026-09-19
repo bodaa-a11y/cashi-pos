@@ -206,21 +206,22 @@ export function readDB() {
 export function writeDB(data: any) {
   cachedDB = data;
   
-  // جدولة الكتابة الفعلية في الطابور المتسلسل لمنع lost writes
-  queueWrite(async () => {
-    if (mongoCollection) {
-      // TODO: النظام السحابي يخزن كامل قاعدة البيانات بمستند واحد {_id: "cashi_pos", data: cachedDB}
-      // مخاطرة: مع نمو المبيعات (orders) وسجلات العمليات (audit_logs)، سيصطدم المستند بحد MongoDB الأقصى البالغ 16 ميجابايت.
-      // توصية: يجب مستقبلاً تقسيم المستند السحابي إلى مجموعات منفصلة (Collections) لكل جدول:
-      // db.collection("orders"), db.collection("products"), db.collection("users"), db.collection("settings"), db.collection("inventory")
-      await mongoCollection.updateOne({ _id: "cashi_pos" }, { $set: { data: cachedDB } }, { upsert: true });
-    } else {
-      // الكتابة الذرية (Atomic Write) للملف المحلي
-      const tempPath = `${DB_FILE}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(cachedDB, null, 2), "utf-8");
-      fs.renameSync(tempPath, DB_FILE);
-    }
-  });
+  // الحفظ الفوري المباشر والمتزامن (Synchronous Atomic Write)
+  // يضمن كتابة البيانات فوراً للقرص الصلب قبل الرد على الكاشير، فلا تضيع أي فاتورة عند إطفاء الجهاز المفاجئ
+  try {
+    const tempPath = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(cachedDB, null, 2), "utf-8");
+    fs.renameSync(tempPath, DB_FILE);
+  } catch (err) {
+    console.error("❌ [كاشي] خطأ في الحفظ الفوري لقاعدة البيانات:", err);
+  }
+
+  // إذا كان هناك اتصال سحابي، يتم التحديث في الخلفية بدون تأخير المعاملات المحلية
+  if (mongoCollection) {
+    mongoCollection.updateOne({ _id: "cashi_pos" }, { $set: { data: cachedDB } }, { upsert: true }).catch((err: any) => {
+      console.warn("⚠️ [كاشي سحابي] تعذر المزامنة السحابية:", err);
+    });
+  }
 }
 
 export function writeAuditLog(action: string, userId: string, userName: string, details: string) {

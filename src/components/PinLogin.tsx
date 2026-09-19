@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Lock, ShieldAlert } from "lucide-react";
 import { User as UserType } from "../types";
 
@@ -96,19 +96,6 @@ export default function PinLogin({ onLoginSuccess, onOpenKitchen }: PinLoginProp
           <div className="m-4 p-3 bg-red-50 border-r-4 border-red-500 rounded-lg flex items-center gap-2 text-red-800 text-sm">
             <ShieldAlert className="w-5 h-5 shrink-0 text-red-600" />
             <span className="font-medium text-right flex-1">{error}</span>
-          </div>
-        )}
-
-        {/* Kitchen shortcut */}
-        {onOpenKitchen && (
-          <div className="px-6 pt-4">
-            <button
-              type="button"
-              onClick={onOpenKitchen}
-              className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-            >
-              📺 الانتقال لشاشة المطبخ (KDS)
-            </button>
           </div>
         )}
 

@@ -1425,15 +1425,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <TrendingUp className="w-4 h-4" />
             <span>نظرة عامة والتحليلات</span>
           </button>
-          <button
-            onClick={() => setActiveTab("live")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "live" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <Radio className="w-4 h-4 text-emerald-600" />
-            <span>المراقبة اللحظية (مباشر)</span>
-          </button>
+
           <button
             onClick={() => setActiveTab("eod")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
@@ -1443,6 +1435,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <FileText className="w-4 h-4 text-[#2E7D32]" />
             <span>تقرير نهاية اليوم الشامل</span>
           </button>
+
           <button
             onClick={() => setActiveTab("menu")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
@@ -1452,60 +1445,17 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <List className="w-4 h-4" />
             <span>إدارة المنيو والأصناف</span>
           </button>
+
           <button
-            onClick={() => setActiveTab("tables")}
+            onClick={() => setActiveTab("reports")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "tables" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+              activeTab === "reports" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
             }`}
           >
-            <Map className="w-4 h-4" />
-            <span>خارطة الصالة والطاولات</span>
+            <BarChart2 className="w-4 h-4" />
+            <span>فواتير المبيعات وإعادة الطباعة</span>
           </button>
-          <button
-            onClick={() => setActiveTab("inventory")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "inventory" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            <span>إدارة المخازن والمستودع</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("purchasing")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "purchasing" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>المشتريات والموردين</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("customers")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "customers" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>إدارة العملاء CRM</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("finances")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "finances" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            <span>الحسابات والمالية</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("staff")}
-            className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "staff" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>الموظفون والصلاحيات</span>
-          </button>
+
           <button
             onClick={() => setActiveTab("shifts")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
@@ -1515,25 +1465,25 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             <Calendar className="w-4 h-4" />
             <span>سجل الورديات المقفلة</span>
           </button>
-          
+
           <button
-            onClick={() => setActiveTab("reports")}
+            onClick={() => setActiveTab("tables")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "reports" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+              activeTab === "tables" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
             }`}
           >
-            <BarChart2 className="w-4 h-4" />
-            <span>التقارير المتقدمة والفواتير</span>
+            <Map className="w-4 h-4" />
+            <span>خارطة الصالة والطاولات</span>
           </button>
 
-           <button
-            onClick={() => setActiveTab("audit")}
+          <button
+            onClick={() => setActiveTab("staff")}
             className={`w-full py-3 px-4 rounded-xl font-bold text-sm text-right flex items-center justify-between transition-all ${
-              activeTab === "audit" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
+              activeTab === "staff" ? "bg-[#EAF4EA] text-[#2E7D32]" : "text-stone-600 hover:bg-stone-50"
             }`}
           >
-            <Clock className="w-4 h-4 text-amber-600" />
-            <span>سجل تدقيق العمليات (Audit)</span>
+            <Users className="w-4 h-4" />
+            <span>الموظفون والصلاحيات</span>
           </button>
 
           <button
@@ -1543,7 +1493,7 @@ export default function AdminDashboard({ onBack, currentUser }: AdminDashboardPr
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>إعدادات النظام والطباعة</span>
+            <span>إعدادات المنشأة والطباعة</span>
           </button>
         </nav>
 
