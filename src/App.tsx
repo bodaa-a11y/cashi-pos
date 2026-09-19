@@ -93,7 +93,7 @@ function CashiApp() {
   const [showHeldList, setShowHeldList] = useState<boolean>(false);
   const [showCloseShiftModal, setShowCloseShiftModal] = useState<boolean>(false);
   const [paymentParams, setPaymentParams] = useState<any | null>(null);
-  
+  const isOnline = true;
   const [heldCount, setHeldCount] = useState<number>(0);
 
   // فحص إعدادات المنشأة عند بدء التشغيل
@@ -160,19 +160,7 @@ function CashiApp() {
     }
   }, [currentUser, showHeldList]);
 
-  // Safety net background polling sync queue (every 30 seconds)
-  useEffect(() => {
-    const pollInterval = setInterval(() => {
-      if (navigator.onLine) {
-        setIsOnline(true);
-        triggerSyncRoutine();
-      } else {
-        setIsOnline(false);
-      }
-    }, 30000);
 
-    return () => clearInterval(pollInterval);
-  }, [offlineOrders]);
 
   // Check if cashier has an already open shift on successful login
   const checkActiveShiftAndRoute = async (user: User) => {
