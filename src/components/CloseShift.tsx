@@ -125,7 +125,6 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
       <head>
         <meta charset="utf-8">
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
           @page { margin: 0; size: 70mm auto; }
           * { box-sizing: border-box; }
           body {
@@ -287,7 +286,6 @@ export default function CloseShift({ shift, onShiftClosed, onCancel }: CloseShif
         <head>
           <meta charset="utf-8">
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
             @page {
               margin: 0;
               size: 70mm auto;

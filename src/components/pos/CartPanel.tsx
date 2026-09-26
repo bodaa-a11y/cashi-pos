@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2, Plus, Minus, ShoppingBag, Truck, ShoppingCart, Utensils, Tag, User } from "lucide-react";
+import { Trash2, Plus, Minus, ShoppingBag, Truck, ShoppingCart, Utensils, Tag, User, Clock } from "lucide-react";
 import { Product, RestaurantTable, Customer } from "../../types";
 
 interface CartPanelProps {
@@ -109,7 +109,7 @@ export default function CartPanel({
               <option value="">تحديد الطاولة...</option>
               {tables.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.status === "occupied" ? "مشغولة" : "شبه فارغة"})
+                  {(t as any).nameAr || (t as any).name || t.label || t.id} ({t.status === "occupied" ? "مشغولة" : "شبه فارغة"})
                 </option>
               ))}
             </select>

@@ -1,6 +1,7 @@
 import express from "express";
 import { readDB, writeDB, writeAuditLog } from "../db/db";
 import { authenticate } from "../middleware/authenticate";
+import { getOrderBusinessDate, filterOrdersByDateRange } from "../utils/businessDate";
 
 const router = express.Router();
 
@@ -33,53 +34,6 @@ router.get("/api/orders/stream", (req, res) => {
     if (idx !== -1) sseClients.splice(idx, 1);
   });
 });
-
-function getOrderBusinessDate(o: any, db?: any): string {
-  if (db && o.shiftId && Array.isArray(db.shifts)) {
-    const shift = db.shifts.find((s: any) => s.id === o.shiftId);
-    if (shift && shift.openedAt) {
-      try {
-        const d = new Date(shift.openedAt);
-        if (!isNaN(d.getTime())) {
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        }
-      } catch (e) {
-        return shift.openedAt.split("T")[0];
-      }
-    }
-  }
-  if (o.createdAt) {
-    try {
-      const d = new Date(o.createdAt);
-      if (!isNaN(d.getTime())) {
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      }
-    } catch (e) {
-      return o.createdAt.split("T")[0];
-    }
-  }
-  return "";
-}
-
-// دالة مساعدة لتصفية الطلبات بنطاق تاريخ
-function filterOrdersByDateRange(orders: any[], from: string, to: string, db?: any) {
-  const fromDate = new Date(from);
-  fromDate.setHours(0, 0, 0, 0);
-  const toDate = new Date(to);
-  toDate.setHours(23, 59, 59, 999);
-  return (orders || []).filter((o: any) => {
-    const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
-    if (!isCompleted) return false;
-
-    // فحص اليوم التشغيلي أولاً (لتضمين طلبات ما بعد منتصف الليل مع وردية اليوم نفسه)
-    const bDate = getOrderBusinessDate(o, db);
-    if (bDate && bDate >= from && bDate <= to) return true;
-
-    // كحل احتياطي للتوافق
-    const d = new Date(o.createdAt);
-    return !isNaN(d.getTime()) && d >= fromDate && d <= toDate;
-  });
-}
 
 // دالة حساب ملخص الطلبات المشتركة
 function calculateOrdersSummary(db: any, orders: any[]) {
@@ -676,9 +630,10 @@ router.get("/api/reports/date-range", authenticate(["admin", "manager"]), (req, 
 router.get("/api/reports/monthly", authenticate(["admin", "manager"]), (req, res) => {
   const { month, year } = req.query;
   const db = readDB();
+  const lastDay = new Date(Number(year), Number(month), 0).getDate();
   const from = `${year}-${month}-01`;
-  const to = `${year}-${month}-31`; // Simplified date range end
-  const filtered = filterOrdersByDateRange(db.orders, from, to, db);
+  const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
+  const filtered = filterOrdersByDateRange(db.orders, from as string, to as string, db);
   res.json(calculateOrdersSummary(db, filtered));
 });
 

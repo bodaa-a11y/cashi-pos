@@ -205,7 +205,7 @@ async function startEmbeddedServer(): Promise<number> {
 
 function createMainWindow(port: number): BrowserWindow {
   // تحميل أيقونة التطبيق
-  let icon: nativeImage | undefined;
+  let icon: any | undefined;
   try {
     if (fs.existsSync(ICON_PATH)) {
       icon = nativeImage.createFromPath(ICON_PATH);
@@ -285,7 +285,7 @@ function createMainWindow(port: number): BrowserWindow {
 
 function createSystemTray(): Tray {
   // تحميل أيقونة شريط النظام
-  let trayIcon: nativeImage;
+  let trayIcon: any;
   try {
     if (fs.existsSync(ICON_PATH)) {
       trayIcon = nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 });

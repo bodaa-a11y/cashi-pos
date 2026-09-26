@@ -1,44 +1,12 @@
 import express from "express";
 import { readDB } from "../db/db";
 import { authenticate } from "../middleware/authenticate";
+import { getOrderBusinessDate } from "../utils/businessDate";
 
 const router = express.Router();
 
 // تقريب لمنزلتين عشريتين
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-export function getOrderBusinessDate(o: any, db: any): string {
-  if (o.shiftId && Array.isArray(db?.shifts)) {
-    const shift = db.shifts.find((s: any) => s.id === o.shiftId);
-    if (shift && shift.openedAt) {
-      try {
-        const d = new Date(shift.openedAt);
-        if (!isNaN(d.getTime())) {
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, "0");
-          const day = String(d.getDate()).padStart(2, "0");
-          return `${year}-${month}-${day}`;
-        }
-      } catch (e) {
-        return shift.openedAt.split("T")[0];
-      }
-    }
-  }
-  if (o.createdAt) {
-    try {
-      const d = new Date(o.createdAt);
-      if (!isNaN(d.getTime())) {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        return `${year}-${month}-${day}`;
-      }
-    } catch (e) {
-      return o.createdAt.split("T")[0];
-    }
-  }
-  return "";
-}
 
 function dayRange(dateStr: string) {
   const from = new Date(dateStr + "T00:00:00");
@@ -47,33 +15,14 @@ function dayRange(dateStr: string) {
 }
 
 function ordersOfDay(db: any, dateStr: string) {
-  const { from, to } = dayRange(dateStr);
   return (db.orders || []).filter((o: any) => {
-    const isCompleted = o.status === "completed" || o.status === "partially_refunded" || o.status === "refunded";
+    const isCompleted =
+      o.status === "completed" ||
+      o.status === "partially_refunded" ||
+      o.status === "refunded";
     if (!isCompleted) return false;
-
-    // 1. احتساب الطلب بناءً على اليوم التشغيلي للوردية (لتشمل طلبات ما بعد منتصف الليل)
     const bDate = getOrderBusinessDate(o, db);
-    if (bDate === dateStr) return true;
-
-    // 2. لو الطلب تابع لوردية مفتوحة وفتحت في اليوم المطلوب — ده يعني إن الوردية عبرت منتصف الليل
-    if (o.shiftId && Array.isArray(db.shifts)) {
-      const shift = db.shifts.find((s: any) => s.id === o.shiftId);
-      if (shift && shift.openedAt) {
-        const shiftOpenDate = new Date(shift.openedAt);
-        if (!isNaN(shiftOpenDate.getTime()) && shiftOpenDate >= from && shiftOpenDate <= to) {
-          return true; // الطلب تابع لوردية فتحت في نفس اليوم — حتى لو الطلب بعد منتصف الليل
-        }
-      }
-    }
-
-    // 3. فقط الطلبات بدون وردية: fallback للتاريخ الفعلي
-    if (!o.shiftId) {
-      const d = new Date(o.createdAt);
-      return !isNaN(d.getTime()) && d >= from && d <= to;
-    }
-
-    return false;
+    return bDate === dateStr; // ✅ الوردية بتفتح وتقفل براحتها، حتى لو عبرت يومين
   });
 }
 

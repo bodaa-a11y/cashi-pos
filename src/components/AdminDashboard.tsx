@@ -80,7 +80,8 @@ import {
   ShoppingBag,
   UserCheck,
   FileText,
-  Radio
+  Radio,
+  Tag
 } from "lucide-react";
 import {
   BarChart,

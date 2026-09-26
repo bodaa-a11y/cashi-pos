@@ -185,16 +185,23 @@ export default function PaymentModal({
 
     // Build the order document
     const clientUuid = `uuid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const orderItems: OrderItem[] = items.map((item, index) => ({
-      id: `oi-${Date.now()}-${index}`,
-      productId: item.product.id,
-      productNameSnapshot: item.product.nameAr,
-      unitPrice: item.product.price,
-      quantity: item.quantity,
-      lineTotal: item.product.price * item.quantity,
-      notes: item.notes,
-      status: "pending",
-    }));
+    const orderItems: OrderItem[] = items.map((item, index) => {
+      const unitPrice = (item as any).resolvedUnitPrice ?? item.product.price;
+      return {
+        id: `oi-${Date.now()}-${index}`,
+        productId: item.product.id,
+        productNameSnapshot: item.product.nameAr,
+        unitPrice,
+        quantity: item.quantity,
+        lineTotal: unitPrice * item.quantity,
+        notes: item.notes,
+        status: "pending",
+        isOverridden: (item as any).isOverridden,
+        originalPrice: (item as any).originalPrice,
+        overrideReason: (item as any).overrideReason,
+        approverUserId: (item as any).approverUserId
+      };
+    });
 
     const paymentsArray: Payment[] = [];
     if (method === "cash") {
